@@ -5,6 +5,7 @@ using UnityEngine;
 public class FluidSimulation : MonoBehaviour
 {
     public GameObject particlePrefab; // Reference to the particle prefab
+    public CellVisualizer cellVisualizer; // Reference to the CellVisualizer script
 
     [Header("Simulation Settings")]
     public Vector2 boundsSize = new Vector2(10, 10); // Size of the simulation bounds
@@ -19,6 +20,7 @@ public class FluidSimulation : MonoBehaviour
     [Header("Visualization")]
     public bool visualizeGrid = true;
     public bool visualizeFluidCells = false;
+    public bool visualizeCellsProperties = false;
 
     private List<Particle> particles = new List<Particle>();
     private Cell[,] grid;
@@ -83,6 +85,9 @@ public class FluidSimulation : MonoBehaviour
 
         // Update grid cell velocities
         UpdateGridVelocities();
+
+        // Check for mouse click and handle cell visualization
+        HandleMouseClick();
     }
 
     void ResolveCollisions(ref Particle particle)
@@ -264,6 +269,41 @@ public class FluidSimulation : MonoBehaviour
                     }
                 }
             }
+        }
+    }
+
+    void HandleMouseClick()
+    {
+        if (Input.GetMouseButtonDown(0) && visualizeCellsProperties) // Left mouse button clicked
+        {
+            if(!cellVisualizer.cellInfoText.gameObject.activeSelf)
+            {
+                cellVisualizer.cellInfoText.gameObject.SetActive(true);
+            }
+            Vector2 mousePosition = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+            int cols = grid.GetLength(0);
+            int rows = grid.GetLength(1);
+
+            for (int y = 0; y < rows; y++)
+            {
+                for (int x = 0; x < cols; x++)
+                {
+                    Vector2 cellCenter = grid[x, y].centerPosition;
+                    float halfCellWidth = cellWidth / 2;
+
+                    if (mousePosition.x >= cellCenter.x - halfCellWidth && mousePosition.x <= cellCenter.x + halfCellWidth &&
+                        mousePosition.y >= cellCenter.y - halfCellWidth && mousePosition.y <= cellCenter.y + halfCellWidth)
+                    {
+                        // Cell clicked, display its parameters
+                        Cell clickedCell = grid[x, y];
+                        cellVisualizer.DisplayCellInfo(clickedCell.centerPosition, clickedCell.velocity, clickedCell.hasFluid);
+                    }
+                }
+            }
+        }
+        else if (!visualizeCellsProperties && cellVisualizer.cellInfoText.gameObject.activeSelf)
+        {
+            cellVisualizer.cellInfoText.gameObject.SetActive(false);
         }
     }
 }
