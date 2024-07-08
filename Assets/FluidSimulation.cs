@@ -14,8 +14,10 @@ public class FluidSimulation : MonoBehaviour
 
     public float gravity = -9.81f;
     public int particleCount = 100; // Number of particles
+    public float cellWidth = 1.0f; // Width of one cell
 
     private List<Particle> particles = new List<Particle>();
+    private Cell[,] grid;
 
     struct Particle
     {
@@ -31,10 +33,23 @@ public class FluidSimulation : MonoBehaviour
         }
     }
 
+    struct Cell
+    {
+        public Vector2 velocity;
+
+        public Cell(Vector2 vel)
+        {
+            velocity = vel;
+        }
+    }
+
     void Start()
     {
         // Initialize particles in a grid pattern
         SpawnParticlesInGrid();
+
+        // Initialize the grid
+        InitializeGrid();
     }
 
     void Update()
@@ -101,6 +116,12 @@ public class FluidSimulation : MonoBehaviour
         // Draw the bounds
         Gizmos.color = UnityEngine.Color.green;
         Gizmos.DrawWireCube(Vector3.zero, new Vector3(boundsSize.x, boundsSize.y, 0));
+
+        // Visualize the grid
+        if (grid != null)
+        {
+            VisualizeGrid();
+        }
     }
 
     void SpawnParticlesInGrid()
@@ -128,6 +149,42 @@ public class FluidSimulation : MonoBehaviour
                 Particle newParticle = new Particle(spawnPos, Vector2.zero, null);
                 DrawCircle(spawnPos, particleSize, UnityEngine.Color.cyan, ref newParticle); // Draw the particle
                 particles.Add(newParticle);
+            }
+        }
+    }
+
+    void InitializeGrid()
+    {
+        int cols = Mathf.CeilToInt(boundsSize.x / cellWidth );
+        int rows = Mathf.CeilToInt(boundsSize.y / cellWidth );
+
+        grid = new Cell[cols, rows];
+
+        for (int y = 0; y < rows; y++)
+        {
+            for (int x = 0; x < cols; x++)
+            {
+                grid[x, y] = new Cell(Vector2.zero);
+            }
+        }
+    }
+
+    void VisualizeGrid()
+    {
+       // Gizmos.color = Color.white;
+        Gizmos.color = new Color(255 , 255, 255 ,10);
+
+        int cols = Mathf.CeilToInt(boundsSize.x / cellWidth);
+        int rows = Mathf.CeilToInt(boundsSize.y / cellWidth);
+
+        Vector2 offset = new Vector2(boundsSize.x / 2 - cellWidth /2 , boundsSize.y / 2 - cellWidth /2);
+
+        for (int y = 0; y < rows; y++)
+        {
+            for (int x = 0; x < cols; x++)
+            {
+                Vector2 pos = new Vector2(x * cellWidth - offset.x, y * cellWidth - offset.y);
+                Gizmos.DrawWireCube(new Vector3(pos.x, pos.y, 0), new Vector3(cellWidth, cellWidth, 0));
             }
         }
     }
