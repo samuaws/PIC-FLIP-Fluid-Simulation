@@ -319,6 +319,7 @@ GameObject:
   m_Component:
   - component: {fileID: 972634513}
   - component: {fileID: 972634514}
+  - component: {fileID: 972634515}
   m_Layer: 0
   m_Name: Simulation
   m_TagString: Untagged
@@ -357,7 +358,23 @@ MonoBehaviour:
   boundsSize: {x: 17.88, y: 9.81}
   particleSize: 0.5
   gravity: -9.81
-  particleCount: 100
+  cellWidth: 1
+  activeCells: 100
+  visualizeGrid: 1
+  visualizeFluidCells: 0
+--- !u!114 &972634515
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 972634512}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 775ff7eb07b42a645a5a9f0657c06a3f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  cellInfoText: {fileID: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

@@ -15,7 +15,10 @@ public class FluidSimulation : MonoBehaviour
     public float gravity = -9.81f;
     public float cellWidth = 1.0f; // Width of one cell
     public int activeCells = 10; // Number of cells that will spawn particles
+
+    [Header("Visualization")]
     public bool visualizeGrid = true;
+    public bool visualizeFluidCells = false;
 
     private List<Particle> particles = new List<Particle>();
     private Cell[,] grid;
@@ -38,11 +41,13 @@ public class FluidSimulation : MonoBehaviour
     {
         public Vector2 velocity;
         public Vector2 centerPosition;
+        public bool hasFluid;
 
-        public Cell(Vector2 vel, Vector2 center)
+        public Cell(Vector2 vel, Vector2 center, bool hasFluid)
         {
             velocity = vel;
             centerPosition = center;
+            this.hasFluid = hasFluid;
         }
     }
 
@@ -144,7 +149,7 @@ public class FluidSimulation : MonoBehaviour
             for (int x = 0; x < cols; x++)
             {
                 Vector2 centerPosition = new Vector2(x * cellWidth - offset.x + cellWidth / 2, y * cellWidth - offset.y + cellWidth / 2);
-                grid[x, y] = new Cell(Vector2.zero, centerPosition);
+                grid[x, y] = new Cell(Vector2.zero, centerPosition, false);
             }
         }
     }
@@ -222,6 +227,11 @@ public class FluidSimulation : MonoBehaviour
                 if (particleCount > 0)
                 {
                     averageVelocity /= particleCount;
+                    grid[x, y].hasFluid = true;
+                }
+                else
+                {
+                    grid[x, y].hasFluid = false;
                 }
 
                 grid[x, y].velocity = averageVelocity;
@@ -242,6 +252,17 @@ public class FluidSimulation : MonoBehaviour
             {
                 Vector2 centerPosition = grid[x, y].centerPosition;
                 Gizmos.DrawWireCube(new Vector3(centerPosition.x, centerPosition.y, 0), new Vector3(cellWidth, cellWidth, 0));
+
+                // Visualize cells with fluid
+                if (visualizeFluidCells)
+                {
+                    if (grid[x, y].hasFluid)
+                    {
+                        Gizmos.color = Color.blue;
+                        Gizmos.DrawCube(new Vector3(centerPosition.x, centerPosition.y, 0), new Vector3(cellWidth * 0.9f, cellWidth * 0.9f, 0));
+                        Gizmos.color = Color.white;
+                    }
+                }
             }
         }
     }
