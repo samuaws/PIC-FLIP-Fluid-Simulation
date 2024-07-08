@@ -44,14 +44,19 @@ public class FluidSimulation : MonoBehaviour
         public Vector2 velocity;
         public Vector2 centerPosition;
         public bool hasFluid;
+        public float distanceToBoundary;
+        public bool isBoundary; // New field
 
         public Cell(Vector2 vel, Vector2 center, bool hasFluid)
         {
             velocity = vel;
             centerPosition = center;
             this.hasFluid = hasFluid;
+            distanceToBoundary = float.MaxValue; // Initialize to a large value
+            isBoundary = false; // Initialize as non-boundary
         }
     }
+
 
     void Start()
     {
@@ -85,6 +90,9 @@ public class FluidSimulation : MonoBehaviour
 
         // Update grid cell velocities
         UpdateGridVelocities();
+
+        //Update the Distance field 
+        ConstructDistanceField();
 
         // Check for mouse click and handle cell visualization
         HandleMouseClick();
@@ -232,6 +240,7 @@ public class FluidSimulation : MonoBehaviour
                 if (particleCount > 0)
                 {
                     averageVelocity /= particleCount;
+                    averageVelocity += Vector2.up * gravity;
                     grid[x, y].hasFluid = true;
                 }
                 else
@@ -243,6 +252,88 @@ public class FluidSimulation : MonoBehaviour
             }
         }
     }
+
+    void ConstructDistanceField()
+    {
+        int cols = grid.GetLength(0);
+        int rows = grid.GetLength(1);
+
+        // Initialize distances
+        for (int y = 0; y < rows; y++)
+        {
+            for (int x = 0; x < cols; x++)
+            {
+                if (grid[x, y].hasFluid)
+                {
+                    grid[x, y].distanceToBoundary = -Mathf.Infinity; // Inside the fluid, negative infinity
+                }
+                else
+                {
+                    grid[x, y].distanceToBoundary = Mathf.Infinity; // Outside the fluid, positive infinity
+                }
+            }
+        }
+
+        // Perform multiple sweeps (e.g., top-down, bottom-up, left-right, right-left)
+        SweepDirection(grid, cols, rows, 1, 1); // Top-left to bottom-right
+        SweepDirection(grid, cols, rows, -1, -1); // Bottom-right to top-left
+        SweepDirection(grid, cols, rows, 1, -1); // Top-right to bottom-left
+        SweepDirection(grid, cols, rows, -1, 1); // Bottom-left to top-right
+    }
+
+    void SweepDirection(Cell[,] grid, int cols, int rows, int stepX, int stepY)
+    {
+        // Determine starting and ending indices based on step direction
+        int startX = stepX > 0 ? 0 : cols - 1;
+        int endX = stepX > 0 ? cols : -1;
+        int startY = stepY > 0 ? 0 : rows - 1;
+        int endY = stepY > 0 ? rows : -1;
+
+        // Sweep in the specified direction
+        for (int y = startY; y != endY; y += stepY)
+        {
+            for (int x = startX; x != endX; x += stepX)
+            {
+                if (!grid[x, y].hasFluid)
+                {
+                    float minDistance = float.MaxValue;
+
+                    // Check neighboring cells
+                    for (int dy = -1; dy <= 1; dy++)
+                    {
+                        for (int dx = -1; dx <= 1; dx++)
+                        {
+                            int neighborX = x + dx;
+                            int neighborY = y + dy;
+
+                            if (neighborX >= 0 && neighborX < cols &&
+                                neighborY >= 0 && neighborY < rows)
+                            {
+                                float neighborDistance = grid[neighborX, neighborY].distanceToBoundary;
+                                float distance = Vector2.Distance(grid[x, y].centerPosition, grid[neighborX, neighborY].centerPosition);
+
+                                if (neighborDistance != Mathf.Infinity)
+                                {
+                                    float newDistance = neighborDistance + distance;
+
+                                    // Determine if the new distance is smaller
+                                    if (newDistance < minDistance)
+                                    {
+                                        minDistance = newDistance;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Update distance to boundary
+                    grid[x, y].distanceToBoundary = minDistance;
+                }
+            }
+        }
+    }
+
+
 
     void VisualizeGrid()
     {
@@ -296,7 +387,7 @@ public class FluidSimulation : MonoBehaviour
                     {
                         // Cell clicked, display its parameters
                         Cell clickedCell = grid[x, y];
-                        cellVisualizer.DisplayCellInfo(clickedCell.centerPosition, clickedCell.velocity, clickedCell.hasFluid);
+                        cellVisualizer.DisplayCellInfo(clickedCell.centerPosition, clickedCell.velocity, clickedCell.hasFluid , clickedCell.distanceToBoundary , clickedCell.isBoundary);
                     }
                 }
             }
