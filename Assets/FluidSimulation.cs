@@ -15,7 +15,7 @@ public class FluidSimulation : MonoBehaviour
     public float gravity = -9.81f;
     public float cellWidth = 1.0f; // Width of one cell
     public int activeCells = 10; // Number of cells that will spawn particles
-    public bool vizualizeGrid = true;
+    public bool visualizeGrid = true;
 
     private List<Particle> particles = new List<Particle>();
     private Cell[,] grid;
@@ -75,6 +75,9 @@ public class FluidSimulation : MonoBehaviour
             // Update the particle in the list
             particles[i] = particle;
         }
+
+        // Update grid cell velocities
+        UpdateGridVelocities();
     }
 
     void ResolveCollisions(ref Particle particle)
@@ -94,7 +97,7 @@ public class FluidSimulation : MonoBehaviour
         }
     }
 
-    void DrawCircle(Vector2 position, float size, UnityEngine.Color color, ref Particle particle)
+    void DrawCircle(Vector2 position, float size, Color color, ref Particle particle)
     {
         // Instantiate a new particle at the given position
         GameObject particleObject = Instantiate(particlePrefab, new Vector3(position.x, position.y, 0), Quaternion.identity);
@@ -117,11 +120,11 @@ public class FluidSimulation : MonoBehaviour
     void OnDrawGizmos()
     {
         // Draw the bounds
-        Gizmos.color = UnityEngine.Color.green;
+        Gizmos.color = Color.green;
         Gizmos.DrawWireCube(Vector3.zero, new Vector3(boundsSize.x, boundsSize.y, 0));
 
         // Visualize the grid
-        if (grid != null && vizualizeGrid)
+        if (grid != null && visualizeGrid)
         {
             VisualizeGrid();
         }
@@ -175,7 +178,6 @@ public class FluidSimulation : MonoBehaviour
             {
                 for (int j = 0; j < 2; j++)
                 {
-
                     // Randomly position the particle within the subcell
                     float xOffset = Random.Range(0, subCellWidth);
                     float yOffset = Random.Range(0, subCellWidth);
@@ -188,9 +190,41 @@ public class FluidSimulation : MonoBehaviour
                     );
 
                     Particle newParticle = new Particle(spawnPos, Vector2.zero, null);
-                    DrawCircle(spawnPos, particleSize, UnityEngine.Color.cyan, ref newParticle);
+                    DrawCircle(spawnPos, particleSize, Color.cyan, ref newParticle);
                     particles.Add(newParticle);
                 }
+            }
+        }
+    }
+
+    void UpdateGridVelocities()
+    {
+        int cols = grid.GetLength(0);
+        int rows = grid.GetLength(1);
+
+        for (int y = 0; y < rows; y++)
+        {
+            for (int x = 0; x < cols; x++)
+            {
+                Vector2 cellCenter = grid[x, y].centerPosition;
+                Vector2 averageVelocity = Vector2.zero;
+                int particleCount = 0;
+
+                foreach (var particle in particles)
+                {
+                    if (Vector2.Distance(particle.position, cellCenter) <= cellWidth)
+                    {
+                        averageVelocity += particle.velocity;
+                        particleCount++;
+                    }
+                }
+
+                if (particleCount > 0)
+                {
+                    averageVelocity /= particleCount;
+                }
+
+                grid[x, y].velocity = averageVelocity;
             }
         }
     }
