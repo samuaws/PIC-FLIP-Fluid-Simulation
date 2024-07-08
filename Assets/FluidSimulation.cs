@@ -13,8 +13,9 @@ public class FluidSimulation : MonoBehaviour
     public float particleSize = 0.5f; // Size of each particle
 
     public float gravity = -9.81f;
-    public int particleCount = 100; // Number of particles
     public float cellWidth = 1.0f; // Width of one cell
+    public int activeCells = 10; // Number of cells that will spawn particles
+    public bool vizualizeGrid = true;
 
     private List<Particle> particles = new List<Particle>();
     private Cell[,] grid;
@@ -36,20 +37,22 @@ public class FluidSimulation : MonoBehaviour
     struct Cell
     {
         public Vector2 velocity;
+        public Vector2 centerPosition;
 
-        public Cell(Vector2 vel)
+        public Cell(Vector2 vel, Vector2 center)
         {
             velocity = vel;
+            centerPosition = center;
         }
     }
 
     void Start()
     {
-        // Initialize particles in a grid pattern
-        SpawnParticlesInGrid();
-
         // Initialize the grid
         InitializeGrid();
+
+        // Spawn particles in a grid pattern
+        SpawnParticlesInGrid();
     }
 
     void Update()
@@ -118,73 +121,93 @@ public class FluidSimulation : MonoBehaviour
         Gizmos.DrawWireCube(Vector3.zero, new Vector3(boundsSize.x, boundsSize.y, 0));
 
         // Visualize the grid
-        if (grid != null)
+        if (grid != null && vizualizeGrid)
         {
             VisualizeGrid();
         }
     }
 
-    void SpawnParticlesInGrid()
-    {
-        int gridSize = Mathf.CeilToInt(Mathf.Sqrt(particleCount)); // Calculate the size of the grid
-        float spacing = particleSize; // Set the spacing between particles
-
-        // Calculate the total width and height of the grid
-        float gridWidth = gridSize * spacing;
-        float gridHeight = gridSize * spacing;
-
-        // Center the grid in the bounds
-        Vector2 startPos = new Vector2(
-            -gridWidth / 2 + spacing / 2,
-            -gridHeight / 2 + spacing / 2
-        );
-
-        for (int y = 0; y < gridSize; y++)
-        {
-            for (int x = 0; x < gridSize; x++)
-            {
-                if (particles.Count >= particleCount) return; // Stop if the particle count is reached
-
-                Vector2 spawnPos = startPos + new Vector2(x * spacing, y * spacing);
-                Particle newParticle = new Particle(spawnPos, Vector2.zero, null);
-                DrawCircle(spawnPos, particleSize, UnityEngine.Color.cyan, ref newParticle); // Draw the particle
-                particles.Add(newParticle);
-            }
-        }
-    }
-
     void InitializeGrid()
     {
-        int cols = Mathf.CeilToInt(boundsSize.x / cellWidth );
-        int rows = Mathf.CeilToInt(boundsSize.y / cellWidth );
+        int cols = Mathf.CeilToInt(boundsSize.x / cellWidth);
+        int rows = Mathf.CeilToInt(boundsSize.y / cellWidth);
 
         grid = new Cell[cols, rows];
+
+        Vector2 offset = new Vector2(boundsSize.x / 2, boundsSize.y / 2);
 
         for (int y = 0; y < rows; y++)
         {
             for (int x = 0; x < cols; x++)
             {
-                grid[x, y] = new Cell(Vector2.zero);
+                Vector2 centerPosition = new Vector2(x * cellWidth - offset.x + cellWidth / 2, y * cellWidth - offset.y + cellWidth / 2);
+                grid[x, y] = new Cell(Vector2.zero, centerPosition);
+            }
+        }
+    }
+
+    void SpawnParticlesInGrid()
+    {
+        int cols = Mathf.CeilToInt(boundsSize.x / cellWidth);
+        int rows = Mathf.CeilToInt(boundsSize.y / cellWidth);
+
+        int totalCells = cols * rows;
+        int cellsToActivate = Mathf.Min(activeCells, totalCells);
+
+        // Randomly select cells to activate
+        List<Vector2Int> activeCellIndices = new List<Vector2Int>();
+        while (activeCellIndices.Count < cellsToActivate)
+        {
+            int x = Random.Range(0, cols);
+            int y = Random.Range(0, rows);
+            Vector2Int cellIndex = new Vector2Int(x, y);
+            if (!activeCellIndices.Contains(cellIndex))
+            {
+                activeCellIndices.Add(cellIndex);
+            }
+        }
+
+        foreach (Vector2Int cellIndex in activeCellIndices)
+        {
+            // Split each cell into 2x2 subcells
+            float subCellWidth = cellWidth / 2.0f;
+            for (int i = 0; i < 2; i++)
+            {
+                for (int j = 0; j < 2; j++)
+                {
+
+                    // Randomly position the particle within the subcell
+                    float xOffset = Random.Range(0, subCellWidth);
+                    float yOffset = Random.Range(0, subCellWidth);
+
+                    Vector2 cellCenter = grid[cellIndex.x, cellIndex.y].centerPosition;
+
+                    Vector2 spawnPos = cellCenter + new Vector2(
+                        i * subCellWidth + xOffset - subCellWidth / 2,
+                        j * subCellWidth + yOffset - subCellWidth / 2
+                    );
+
+                    Particle newParticle = new Particle(spawnPos, Vector2.zero, null);
+                    DrawCircle(spawnPos, particleSize, UnityEngine.Color.cyan, ref newParticle);
+                    particles.Add(newParticle);
+                }
             }
         }
     }
 
     void VisualizeGrid()
     {
-       // Gizmos.color = Color.white;
-        Gizmos.color = new Color(255 , 255, 255 ,10);
+        Gizmos.color = Color.white;
 
         int cols = Mathf.CeilToInt(boundsSize.x / cellWidth);
         int rows = Mathf.CeilToInt(boundsSize.y / cellWidth);
-
-        Vector2 offset = new Vector2(boundsSize.x / 2 - cellWidth /2 , boundsSize.y / 2 - cellWidth /2);
 
         for (int y = 0; y < rows; y++)
         {
             for (int x = 0; x < cols; x++)
             {
-                Vector2 pos = new Vector2(x * cellWidth - offset.x, y * cellWidth - offset.y);
-                Gizmos.DrawWireCube(new Vector3(pos.x, pos.y, 0), new Vector3(cellWidth, cellWidth, 0));
+                Vector2 centerPosition = grid[x, y].centerPosition;
+                Gizmos.DrawWireCube(new Vector3(centerPosition.x, centerPosition.y, 0), new Vector3(cellWidth, cellWidth, 0));
             }
         }
     }
