@@ -18,6 +18,7 @@ public class FluidSimulation : MonoBehaviour
     public int activeCells = 10; // Number of cells that will spawn particles
     public float particleMass = 1.0f; // Mass of each particle
     public float smoothingLength = 1.0f; // Smoothing length for SPH
+    public float viscosity = 1.0f; // Viscosity coefficient
 
     [Header("Visualization")]
     public bool visualizeGrid = true;
@@ -106,6 +107,9 @@ public class FluidSimulation : MonoBehaviour
 
         // Calculate densities for all particles
         CalculateDensities();
+
+        // Calculate viscosity forces and update velocities
+        CalculateViscosityForcesAndUpdateVelocities();
 
         // Check for mouse click and handle cell visualization
         HandleMouseClick();
@@ -446,6 +450,64 @@ public class FluidSimulation : MonoBehaviour
             }
 
             particles[i] = particle; // Update the particle in the list
+        }
+    }
+    void CalculateViscosityForcesAndUpdateVelocities()
+    {
+        float deltaTime = Time.deltaTime;
+
+        for (int i = 0; i < particles.Count; i++)
+        {
+            Particle particle = particles[i];
+
+            Vector2 viscosityForce = CalculateViscosityForce(particle);
+            print(viscosityForce);
+            Vector2 externalForce = new Vector2(0, gravity * particle.mass);
+
+            Vector2 tempVelocity = particle.velocity + deltaTime * (viscosityForce + externalForce) / particle.mass;
+
+            particle.velocity = tempVelocity;
+
+            particles[i] = particle; // Update the particle in the list
+        }
+    }
+
+    Vector2 CalculateViscosityForce(Particle particle)
+    {
+        Vector2 laplacianVelocity = Vector2.zero;
+
+        for (int j = 0; j < particles.Count; j++)
+        {
+            if (particles.IndexOf(particle) != j)
+            {
+                Particle neighbor = particles[j];
+                float distance = Vector2.Distance(particle.position, neighbor.position);
+
+                if (distance < smoothingLength)
+                {
+                    float kernelLaplacian = CalculateViscosityKernelLaplacian(distance, smoothingLength);
+
+                    // SPH formulation for Laplacian of velocity
+                    laplacianVelocity += (neighbor.velocity - particle.velocity) * (neighbor.mass / neighbor.density) * kernelLaplacian;
+                }
+            }
+        }
+
+        // Multiply by viscosity coefficient and particle mass
+        return particle.mass * viscosity * laplacianVelocity;
+    }
+    float CalculateViscosityKernelLaplacian(float distance, float smoothingLength)
+    {
+        if (distance >= 0 && distance <= smoothingLength)
+        {
+            float r = distance;
+            float h = smoothingLength;
+            float h3 = h * h * h;
+            return (15.0f / (2.0f * Mathf.PI * h3)) * (-r * r * r / (2 * h3) + r * r / (h * h) + h / (2 * r) - 1);
+        }
+        else
+        {
+            return 0.0f;
         }
     }
 
