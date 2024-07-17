@@ -530,10 +530,13 @@ MonoBehaviour:
   particleSize: 0.5
   gravity: -9.81
   cellWidth: 1
-  activeCells: 5
+  activeCells: 20
   particleMass: 1
   smoothingLength: 1
-  visualizeGrid: 1
+  viscosity: 1
+  restDensity: 0.3
+  stiffnessConstant: 3
+  visualizeGrid: 0
   visualizeFluidCells: 0
   visualizeCellsProperties: 1
 --- !u!114 &972634515

@@ -19,6 +19,8 @@ public class FluidSimulation : MonoBehaviour
     public float particleMass = 1.0f; // Mass of each particle
     public float smoothingLength = 1.0f; // Smoothing length for SPH
     public float viscosity = 1.0f; // Viscosity coefficient
+    public float restDensity = 1000.0f; // Rest density
+    public float stiffnessConstant = 3.0f; // Stiffness constant
 
     [Header("Visualization")]
     public bool visualizeGrid = true;
@@ -35,6 +37,7 @@ public class FluidSimulation : MonoBehaviour
         public GameObject gameObject;
         public float mass;
         public float density;
+        public float pressure;
 
         public Particle(Vector2 pos, Vector2 vel, GameObject obj, float m)
         {
@@ -43,6 +46,7 @@ public class FluidSimulation : MonoBehaviour
             gameObject = obj;
             mass = m;
             density = 0.0f;
+            pressure = 0.0f;
         }
     }
 
@@ -77,24 +81,6 @@ public class FluidSimulation : MonoBehaviour
 
     void Update()
     {
-        // Update each particle's position based on its velocity
-        for (int i = 0; i < particles.Count; i++)
-        {
-            Particle particle = particles[i];
-
-            // Update velocity and position
-            particle.velocity += Vector2.up * gravity * Time.deltaTime;
-            particle.position += particle.velocity * Time.deltaTime;
-
-            // Resolve collisions with the bounds
-            ResolveCollisions(ref particle);
-
-            // Update the GameObject's position
-            particle.gameObject.transform.position = new Vector3(particle.position.x, particle.position.y, 0);
-
-            // Update the particle in the list
-            particles[i] = particle;
-        }
 
         // Update grid cell velocities
        // UpdateGridVelocities();
@@ -110,6 +96,31 @@ public class FluidSimulation : MonoBehaviour
 
         // Calculate viscosity forces and update velocities
         CalculateViscosityForcesAndUpdateVelocities();
+
+        // Calculate pressures for all particles
+        CalculatePressures(restDensity, stiffnessConstant);
+
+        // Calculate pressure forces and update velocities
+        CalculatePressureForcesAndUpdateVelocities();
+
+        // Update each particle's position based on its velocity
+        for (int i = 0; i < particles.Count; i++)
+        {
+            Particle particle = particles[i];
+
+            // Update velocity and position
+            //particle.velocity += Vector2.up * gravity * Time.deltaTime;
+            particle.position += particle.velocity * Time.deltaTime;
+
+            // Resolve collisions with the bounds
+            ResolveCollisions(ref particle);
+
+            // Update the GameObject's position
+            particle.gameObject.transform.position = new Vector3(particle.position.x, particle.position.y, 0);
+
+            // Update the particle in the list
+            particles[i] = particle;
+        }
 
         // Check for mouse click and handle cell visualization
         HandleMouseClick();
@@ -225,7 +236,7 @@ public class FluidSimulation : MonoBehaviour
                     );
 
                     Particle newParticle = new Particle(spawnPos, Vector2.zero, null , 1);
-                    DrawCircle(spawnPos, particleSize, Color.cyan, ref newParticle);
+                    DrawCircle(spawnPos, particleSize, Color.blue, ref newParticle);
                     particles.Add(newParticle);
                 }
             }
@@ -498,7 +509,7 @@ public class FluidSimulation : MonoBehaviour
     }
     float CalculateViscosityKernelLaplacian(float distance, float smoothingLength)
     {
-        if (distance >= 0 && distance <= smoothingLength)
+        if (distance > 0 && distance <= smoothingLength)
         {
             float r = distance;
             float h = smoothingLength;
@@ -511,7 +522,66 @@ public class FluidSimulation : MonoBehaviour
         }
     }
 
+    void CalculatePressureForcesAndUpdateVelocities()
+    {
+        for (int i = 0; i < particles.Count; i++)
+        {
+            Particle particle = particles[i];
+            Vector2 pressureForce = CalculatePressureForce(particle);
+            particle.velocity += pressureForce * Time.deltaTime / particle.mass;
+            particles[i] = particle; // Update the particle in the list
+        }
+    }
+    void CalculatePressures(float restDensity, float stiffnessConstant)
+    {
+        for (int i = 0; i < particles.Count; i++)
+        {
+            Particle particle = particles[i];
+            particle.pressure = stiffnessConstant * (particle.density - restDensity);
+            particles[i] = particle; // Update the particle in the list
+        }
+    }
 
+    Vector2 CalculatePressureForce(Particle particle)
+    {
+        Vector2 pressureForce = Vector2.zero;
+
+        for (int j = 0; j < particles.Count; j++)
+        {
+            if (particles.IndexOf(particle) != j)
+            {
+                Particle neighbor = particles[j];
+                float distance = Vector2.Distance(particle.position, neighbor.position);
+
+                if (distance < smoothingLength)
+                {
+                    // Compute the gradient of the Spiky kernel function
+                    Vector2 kernelGradient = CalculateSpikyKernelGradient(particle.position, neighbor.position, smoothingLength);
+
+                    // SPH formulation for pressure force
+                    pressureForce -= (neighbor.mass * (particle.pressure + neighbor.pressure) / (2.0f * neighbor.density)) * kernelGradient;
+                }
+            }
+        }
+
+        return pressureForce;
+    }
+
+    Vector2 CalculateSpikyKernelGradient(Vector2 position_i, Vector2 position_j, float smoothingLength)
+    {
+        Vector2 r = position_i - position_j;
+        float rLength = r.magnitude;
+        if (rLength > smoothingLength || rLength == 0.0f)
+        {
+            return Vector2.zero;
+        }
+
+        float q = rLength / smoothingLength;
+        float sigma = 15.0f / (Mathf.PI * Mathf.Pow(smoothingLength, 6)); // Normalization factor for 2D
+        float gradient = sigma * -3 * Mathf.Pow(smoothingLength - rLength, 2);
+
+        return gradient * (r / rLength);
+    }
 
 
 
