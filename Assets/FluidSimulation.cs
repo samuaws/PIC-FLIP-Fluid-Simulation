@@ -16,6 +16,8 @@ public class FluidSimulation : MonoBehaviour
     public float gravity = -9.81f;
     public float cellWidth = 1.0f; // Width of one cell
     public int activeCells = 10; // Number of cells that will spawn particles
+    public float particleMass = 1.0f; // Mass of each particle
+    public float smoothingLength = 1.0f; // Smoothing length for SPH
 
     [Header("Visualization")]
     public bool visualizeGrid = true;
@@ -30,14 +32,19 @@ public class FluidSimulation : MonoBehaviour
         public Vector2 position;
         public Vector2 velocity;
         public GameObject gameObject;
+        public float mass;
+        public float density;
 
-        public Particle(Vector2 pos, Vector2 vel, GameObject obj)
+        public Particle(Vector2 pos, Vector2 vel, GameObject obj, float m)
         {
             position = pos;
             velocity = vel;
             gameObject = obj;
+            mass = m;
+            density = 0.0f;
         }
     }
+
 
     struct Cell
     {
@@ -89,10 +96,16 @@ public class FluidSimulation : MonoBehaviour
         }
 
         // Update grid cell velocities
-        UpdateGridVelocities();
+       // UpdateGridVelocities();
 
-        //Update the Distance field 
-        ConstructDistanceField();
+        // Recompute the distance field
+       // ComputeDistanceField();
+
+        // Extend the velocity field
+        //ExtendVelocityField();
+
+        // Calculate densities for all particles
+        CalculateDensities();
 
         // Check for mouse click and handle cell visualization
         HandleMouseClick();
@@ -207,7 +220,7 @@ public class FluidSimulation : MonoBehaviour
                         j * subCellWidth + yOffset - subCellWidth / 2
                     );
 
-                    Particle newParticle = new Particle(spawnPos, Vector2.zero, null);
+                    Particle newParticle = new Particle(spawnPos, Vector2.zero, null , 1);
                     DrawCircle(spawnPos, particleSize, Color.cyan, ref newParticle);
                     particles.Add(newParticle);
                 }
@@ -242,96 +255,204 @@ public class FluidSimulation : MonoBehaviour
                     averageVelocity /= particleCount;
                     averageVelocity += Vector2.up * gravity;
                     grid[x, y].hasFluid = true;
+                    grid[x, y].velocity = averageVelocity;
                 }
                 else
                 {
                     grid[x, y].hasFluid = false;
                 }
+                
 
-                grid[x, y].velocity = averageVelocity;
+                // Check for boundary cells
+                bool isBoundary = false;
+                for (int i = -1; i <= 1; i++)
+                {
+                    for (int j = -1; j <= 1; j++)
+                    {
+                        if (i == 0 && j == 0) continue;
+                        int nx = x + i;
+                        int ny = y + j;
+                        if (nx >= 0 && ny >= 0 && nx < cols && ny < rows)
+                        {
+                            if (grid[x, y].hasFluid != grid[nx, ny].hasFluid)
+                            {
+                                isBoundary = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (isBoundary) break;
+                }
+
+                grid[x, y].isBoundary = isBoundary;
+                if (isBoundary)
+                {
+                    grid[x, y].distanceToBoundary = 0; // Initialize boundary cells with zero distance
+                }
+                else if (!grid[x, y].hasFluid)
+                {
+                    grid[x, y].distanceToBoundary = float.MaxValue; // Initialize non-fluid cells with max distance
+                }
             }
         }
     }
-
-    void ConstructDistanceField()
+    void ComputeDistanceField()
     {
         int cols = grid.GetLength(0);
         int rows = grid.GetLength(1);
 
-        // Initialize distances
+        Queue<Vector2Int> queue = new Queue<Vector2Int>();
+
+        // Enqueue all boundary cells
+        for (int y = 0; y < rows; y++)
+        {
+            for (int x = 0; x < cols; x++)
+            {
+                if (grid[x, y].isBoundary)
+                {
+                    queue.Enqueue(new Vector2Int(x, y));
+                    grid[x, y].distanceToBoundary = 0; // Boundary cells have zero distance
+                }
+                else if (!grid[x, y].hasFluid)
+                {
+                    grid[x, y].distanceToBoundary = float.MaxValue; // Non-fluid cells initialize to max distance
+                }
+            }
+        }
+
+        // BFS to propagate distances
+        int[] dx = { -1, 1, 0, 0, -1, -1, 1, 1 };
+        int[] dy = { 0, 0, -1, 1, -1, 1, -1, 1 };
+
+        while (queue.Count > 0)
+        {
+            Vector2Int cell = queue.Dequeue();
+            int x = cell.x;
+            int y = cell.y;
+
+            for (int i = 0; i < 8; i++) // Use 8 directions for Euclidean distance
+            {
+                int nx = x + dx[i];
+                int ny = y + dy[i];
+
+                if (nx >= 0 && ny >= 0 && nx < cols && ny < rows && !grid[nx, ny].hasFluid)
+                {
+                    float newDist = grid[x, y].distanceToBoundary + Vector2.Distance(grid[x, y].centerPosition, grid[nx, ny].centerPosition);
+                    if (newDist < grid[nx, ny].distanceToBoundary)
+                    {
+                        grid[nx, ny].distanceToBoundary = newDist;
+                        queue.Enqueue(new Vector2Int(nx, ny));
+                    }
+                }
+            }
+        }
+    }
+
+    void ExtendVelocityField()
+    {
+        int cols = grid.GetLength(0);
+        int rows = grid.GetLength(1);
+
+        // Compute the gradient of the distance field
+        Vector2[,] distanceGradient = new Vector2[cols, rows];
+        for (int y = 1; y < rows - 1; y++)
+        {
+            for (int x = 1; x < cols - 1; x++)
+            {
+                float dox = (grid[x + 1, y].distanceToBoundary - grid[x - 1, y].distanceToBoundary) / (2 * cellWidth);
+                float doy = (grid[x, y + 1].distanceToBoundary - grid[x, y - 1].distanceToBoundary) / (2 * cellWidth);
+                distanceGradient[x, y] = new Vector2(dox, doy).normalized;
+            }
+        }
+
+        // Extend the velocity field
+        Queue<Vector2Int> queue = new Queue<Vector2Int>();
+
+        // Initialize queue with fluid cells
         for (int y = 0; y < rows; y++)
         {
             for (int x = 0; x < cols; x++)
             {
                 if (grid[x, y].hasFluid)
                 {
-                    grid[x, y].distanceToBoundary = -Mathf.Infinity; // Inside the fluid, negative infinity
-                }
-                else
-                {
-                    grid[x, y].distanceToBoundary = Mathf.Infinity; // Outside the fluid, positive infinity
+                    queue.Enqueue(new Vector2Int(x, y));
                 }
             }
         }
 
-        // Perform multiple sweeps (e.g., top-down, bottom-up, left-right, right-left)
-        SweepDirection(grid, cols, rows, 1, 1); // Top-left to bottom-right
-        SweepDirection(grid, cols, rows, -1, -1); // Bottom-right to top-left
-        SweepDirection(grid, cols, rows, 1, -1); // Top-right to bottom-left
-        SweepDirection(grid, cols, rows, -1, 1); // Bottom-left to top-right
-    }
+        // Propagate velocities using BFS
+        int[] dx = { -1, 1, 0, 0 };
+        int[] dy = { 0, 0, -1, 1 };
 
-    void SweepDirection(Cell[,] grid, int cols, int rows, int stepX, int stepY)
-    {
-        // Determine starting and ending indices based on step direction
-        int startX = stepX > 0 ? 0 : cols - 1;
-        int endX = stepX > 0 ? cols : -1;
-        int startY = stepY > 0 ? 0 : rows - 1;
-        int endY = stepY > 0 ? rows : -1;
-
-        // Sweep in the specified direction
-        for (int y = startY; y != endY; y += stepY)
+        while (queue.Count > 0)
         {
-            for (int x = startX; x != endX; x += stepX)
+            Vector2Int cell = queue.Dequeue();
+            int x = cell.x;
+            int y = cell.y;
+
+            Vector2 baseVelocity = grid[x, y].velocity;
+
+            for (int i = 0; i < 4; i++)
             {
-                if (!grid[x, y].hasFluid)
+                int nx = x + dx[i];
+                int ny = y + dy[i];
+
+                if (nx >= 0 && ny >= 0 && nx < cols && ny < rows && !grid[nx, ny].hasFluid)
                 {
-                    float minDistance = float.MaxValue;
-
-                    // Check neighboring cells
-                    for (int dy = -1; dy <= 1; dy++)
+                    Vector2 gradPhi = distanceGradient[nx, ny];
+                    if (gradPhi != Vector2.zero)
                     {
-                        for (int dx = -1; dx <= 1; dx++)
-                        {
-                            int neighborX = x + dx;
-                            int neighborY = y + dy;
-
-                            if (neighborX >= 0 && neighborX < cols &&
-                                neighborY >= 0 && neighborY < rows)
-                            {
-                                float neighborDistance = grid[neighborX, neighborY].distanceToBoundary;
-                                float distance = Vector2.Distance(grid[x, y].centerPosition, grid[neighborX, neighborY].centerPosition);
-
-                                if (neighborDistance != Mathf.Infinity)
-                                {
-                                    float newDistance = neighborDistance + distance;
-
-                                    // Determine if the new distance is smaller
-                                    if (newDistance < minDistance)
-                                    {
-                                        minDistance = newDistance;
-                                    }
-                                }
-                            }
-                        }
+                        Vector2 projectedVelocity = Vector2.Dot(baseVelocity, gradPhi) * gradPhi;
+                        grid[nx, ny].velocity = projectedVelocity;
+                        print(projectedVelocity);
+                        // Mark the cell as processed by setting a small fluid amount (to avoid reprocessing)
+                        //grid[nx, ny].hasFluid = true;
+                        queue.Enqueue(new Vector2Int(nx, ny));
                     }
-
-                    // Update distance to boundary
-                    grid[x, y].distanceToBoundary = minDistance;
                 }
             }
         }
+
+        // Reset non-fluid cells after velocity extension
+        //for (int y = 0; y < rows; y++)
+        //{
+        //    for (int x = 0; x < cols; x++)
+        //    {
+        //        if (grid[x, y].hasFluid && grid[x, y].velocity == Vector2.zero)
+        //        {
+        //            grid[x, y].hasFluid = false;
+        //        }
+        //    }
+        //}
     }
+
+    void CalculateDensities()
+    {
+        for (int i = 0; i < particles.Count; i++)
+        {
+            Particle particle = particles[i];
+            particle.density = 0.0f;
+
+            for (int j = 0; j < particles.Count; j++)
+            {
+                Particle neighbor = particles[j];
+                float distance = Vector2.Distance(particle.position, neighbor.position);
+                if (distance < smoothingLength)
+                {
+                    float q = distance / smoothingLength;
+                    float kernelValue = (1.0f - q) * (1.0f - q) * (1.0f - q);
+                    particle.density += neighbor.mass * kernelValue;
+                }
+            }
+
+            particles[i] = particle; // Update the particle in the list
+        }
+    }
+
+
+
+
+
 
 
 
@@ -359,9 +480,11 @@ public class FluidSimulation : MonoBehaviour
                         Gizmos.color = Color.white;
                     }
                 }
+
             }
         }
     }
+
 
     void HandleMouseClick()
     {

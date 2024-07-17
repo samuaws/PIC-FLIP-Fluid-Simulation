@@ -530,10 +530,12 @@ MonoBehaviour:
   particleSize: 0.5
   gravity: -9.81
   cellWidth: 1
-  activeCells: 50
+  activeCells: 5
+  particleMass: 1
+  smoothingLength: 1
   visualizeGrid: 1
   visualizeFluidCells: 0
-  visualizeCellsProperties: 0
+  visualizeCellsProperties: 1
 --- !u!114 &972634515
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -581,8 +583,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -309.02597, y: 201.3937}
-  m_SizeDelta: {x: 244.434, y: 78.2117}
+  m_AnchoredPosition: {x: -110.308685, y: 201.3937}
+  m_SizeDelta: {x: 641.8685, y: 78.2117}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1663797948
 MonoBehaviour:
