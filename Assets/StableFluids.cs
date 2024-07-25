@@ -2,171 +2,236 @@ using UnityEngine;
 
 public class StableFluids : MonoBehaviour
 {
-    public int gridSize = 128;
-    public float timeStep = 0.1f;
-    public float diffusion = 0.0001f;
-    public float viscosity = 0.0001f;
+    [SerializeField] int resolutionX = 16;
+    [SerializeField] int resolutionY = 9;
+    [SerializeField] float deltaTime = 0.01f;
+    [SerializeField] float cellSize = 1.0f;
+    [SerializeField] bool visualizeFluidCells = true;
+    [SerializeField] bool randomizeVelocity = true;
+    [SerializeField] float maxInitialVelocity = 1.0f;
+    [SerializeField] float viscosity = 0.1f;
 
-    private float[,] velocityX, velocityY, velocityX0, velocityY0;
-    private float[,] density, density0;
+    private Vector2[,] velocityField;
+    private Vector2[,] tempField;
+    private float[,] pressureField;
+    private float[,] divField;
+    private Color[,] colorField;
 
     void Start()
     {
-        velocityX = new float[gridSize, gridSize];
-        velocityY = new float[gridSize, gridSize];
-        velocityX0 = new float[gridSize, gridSize];
-        velocityY0 = new float[gridSize, gridSize];
-        density = new float[gridSize, gridSize];
-        density0 = new float[gridSize, gridSize];
+        InitializeFields();
+        if (randomizeVelocity)
+        {
+            ApplyRandomInitialConditions();
+        }
+        else
+        {
+            ApplyInitialConditions();
+        }
     }
 
     void Update()
     {
-        HandleInput();
-
-        Step();
-
-        RenderDensity();
+        AdvectionStep();
+        DiffusionStep();
+        PressureProjectionStep();
+        UpdateColorField();
     }
 
-    void HandleInput()
+    void InitializeFields()
     {
-        if (Input.GetMouseButton(0))
-        {
-            Vector2 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-            int x = Mathf.Clamp((int)mousePos.x, 1, gridSize - 2);
-            int y = Mathf.Clamp((int)mousePos.y, 1, gridSize - 2);
+        velocityField = new Vector2[resolutionX, resolutionY];
+        tempField = new Vector2[resolutionX, resolutionY];
+        pressureField = new float[resolutionX, resolutionY];
+        divField = new float[resolutionX, resolutionY];
+        colorField = new Color[resolutionX, resolutionY];
+    }
 
-            density[x, y] += 100.0f;
-            velocityX[x, y] += 10.0f;
-            velocityY[x, y] += 10.0f;
+    void ApplyInitialConditions()
+    {
+        for (int y = 0; y < resolutionY; y++)
+        {
+            for (int x = 0; x < resolutionX; x++)
+            {
+                velocityField[x, y] = Vector2.zero;
+            }
         }
     }
 
-    void Step()
+    void ApplyRandomInitialConditions()
     {
-        Diffuse(1, velocityX0, velocityX, viscosity, timeStep);
-        Diffuse(2, velocityY0, velocityY, viscosity, timeStep);
-
-        Project(velocityX0, velocityY0, velocityX, velocityY);
-
-        Advect(1, velocityX, velocityX0, velocityX0, velocityY0, timeStep);
-        Advect(2, velocityY, velocityY0, velocityX0, velocityY0, timeStep);
-
-        Project(velocityX, velocityY, velocityX0, velocityY0);
-
-        Diffuse(0, density0, density, diffusion, timeStep);
-        Advect(0, density, density0, velocityX, velocityY, timeStep);
-    }
-
-    void Diffuse(int b, float[,] x, float[,] x0, float diff, float dt)
-    {
-        float a = dt * diff * (gridSize - 2) * (gridSize - 2);
-        LinearSolve(b, x, x0, a, 1 + 4 * a);
-    }
-
-    void LinearSolve(int b, float[,] x, float[,] x0, float a, float c)
-    {
-        for (int k = 0; k < 20; k++)
+        for (int y = 0; y < resolutionY; y++)
         {
-            for (int i = 1; i < gridSize - 1; i++)
+            for (int x = 0; x < resolutionX; x++)
             {
-                for (int j = 1; j < gridSize - 1; j++)
+                float randomX = Random.Range(-maxInitialVelocity, maxInitialVelocity);
+                float randomY = Random.Range(-maxInitialVelocity, maxInitialVelocity);
+                velocityField[x, y] = new Vector2(randomX, randomY);
+            }
+        }
+    }
+
+    void AdvectionStep()
+    {
+        float inverseResolutionX = 1.0f / resolutionX;
+        float inverseResolutionY = 1.0f / resolutionY;
+        for (int y = 0; y < resolutionY; y++)
+        {
+            for (int x = 0; x < resolutionX; x++)
+            {
+                Vector2 pos = new Vector2(x * inverseResolutionX, y * inverseResolutionY);
+                Vector2 velocity = velocityField[x, y];
+                Vector2 prevPos = pos - new Vector2(velocity.x * inverseResolutionX, velocity.y * inverseResolutionY) * deltaTime;
+
+                prevPos.x = Mathf.Clamp(prevPos.x, 0, 1);
+                prevPos.y = Mathf.Clamp(prevPos.y, 0, 1);
+
+                Vector2 sampledVelocity = BilinearSample(velocityField, prevPos.x * resolutionX, prevPos.y * resolutionY);
+                tempField[x, y] = sampledVelocity;
+            }
+        }
+
+        // Swap the fields
+        var swapTemp = velocityField;
+        velocityField = tempField;
+        tempField = swapTemp;
+    }
+
+    Vector2 BilinearSample(Vector2[,] field, float x, float y)
+    {
+        int x1 = Mathf.FloorToInt(x);
+        int x2 = Mathf.Clamp(x1 + 1, 0, resolutionX - 1);
+        int y1 = Mathf.FloorToInt(y);
+        int y2 = Mathf.Clamp(y1 + 1, 0, resolutionY - 1);
+
+        x1 = Mathf.Clamp(x1, 0, resolutionX - 1);
+        y1 = Mathf.Clamp(y1, 0, resolutionY - 1);
+
+        float t1 = x - x1;
+        float t2 = y - y1;
+
+        Vector2 v11 = field[x1, y1];
+        Vector2 v12 = field[x1, y2];
+        Vector2 v21 = field[x2, y1];
+        Vector2 v22 = field[x2, y2];
+
+        Vector2 v1 = Vector2.Lerp(v11, v12, t2);
+        Vector2 v2 = Vector2.Lerp(v21, v22, t2);
+
+        return Vector2.Lerp(v1, v2, t1);
+    }
+
+    void DiffusionStep()
+    {
+        float alpha = (cellSize * cellSize) / (viscosity * deltaTime);
+        float beta = 4.0f + alpha;
+
+        for (int i = 0; i < 20; i++) // Perform multiple Jacobi iterations
+        {
+            JacobiVector(velocityField, tempField, alpha, beta);
+            Swap(ref velocityField, ref tempField);
+        }
+    }
+
+    void PressureProjectionStep()
+    {
+        float alpha = -(cellSize * cellSize);
+        float beta = 4.0f;
+
+        // Compute divergence of velocity field
+        for (int y = 1; y < resolutionY - 1; y++)
+        {
+            for (int x = 1; x < resolutionX - 1; x++)
+            {
+                divField[x, y] = -0.5f * (velocityField[x + 1, y].x - velocityField[x - 1, y].x +
+                                          velocityField[x, y + 1].y - velocityField[x, y - 1].y) / cellSize;
+                pressureField[x, y] = 0;
+            }
+        }
+
+        for (int i = 0; i < 20; i++) // Perform multiple Jacobi iterations
+        {
+            JacobiScalar(pressureField, divField, alpha, beta);
+        }
+
+        // Subtract pressure gradient from velocity field
+        for (int y = 1; y < resolutionY - 1; y++)
+        {
+            for (int x = 1; x < resolutionX - 1; x++)
+            {
+                velocityField[x, y] -= 0.5f * new Vector2(pressureField[x + 1, y] - pressureField[x - 1, y],
+                                                          pressureField[x, y + 1] - pressureField[x, y - 1]) / cellSize;
+            }
+        }
+    }
+
+    void JacobiVector(Vector2[,] x, Vector2[,] b, float alpha, float beta)
+    {
+        for (int y = 1; y < resolutionY - 1; y++)
+        {
+            for (int xCoord = 1; xCoord < resolutionX - 1; xCoord++)
+            {
+                tempField[xCoord, y] = (b[xCoord, y] + alpha * (x[xCoord + 1, y] + x[xCoord - 1, y] +
+                                                                x[xCoord, y + 1] + x[xCoord, y - 1])) / beta;
+            }
+        }
+    }
+
+    void JacobiScalar(float[,] x, float[,] b, float alpha, float beta)
+    {
+        for (int y = 1; y < resolutionY - 1; y++)
+        {
+            for (int xCoord = 1; xCoord < resolutionX - 1; xCoord++)
+            {
+                pressureField[xCoord, y] = (b[xCoord, y] + alpha * (x[xCoord + 1, y] + x[xCoord - 1, y] +
+                                                                    x[xCoord, y + 1] + x[xCoord, y - 1])) / beta;
+            }
+        }
+    }
+
+    void Swap(ref Vector2[,] a, ref Vector2[,] b)
+    {
+        var temp = a;
+        a = b;
+        b = temp;
+    }
+
+    void UpdateColorField()
+    {
+        for (int y = 0; y < resolutionY; y++)
+        {
+            for (int x = 0; x < resolutionX; x++)
+            {
+                Vector2 velocity = velocityField[x, y];
+                colorField[x, y] = new Color(velocity.x, velocity.y, 0.0f, 1.0f);
+            }
+        }
+    }
+
+    void OnDrawGizmos()
+    {
+        if (velocityField == null) return;
+
+        Gizmos.color = Color.white;
+        float inverseResolutionX = 1.0f / resolutionX;
+        float inverseResolutionY = 1.0f / resolutionY;
+        Vector3 bottomLeft = transform.position - new Vector3(resolutionX * cellSize * 0.5f, resolutionY * cellSize * 0.5f, 0);
+
+        for (int y = 0; y < resolutionY; y++)
+        {
+            for (int x = 0; x < resolutionX; x++)
+            {
+                Vector2 velocity = velocityField[x, y];
+                Vector3 pos = bottomLeft + new Vector3(x * cellSize, y * cellSize, 0);
+                Gizmos.color = Color.white;
+                Gizmos.DrawWireCube(pos, new Vector3(cellSize, cellSize, 0));
+
+                if (visualizeFluidCells)
                 {
-                    x[i, j] = (x0[i, j] + a * (x[i + 1, j] + x[i - 1, j] + x[i, j + 1] + x[i, j - 1])) / c;
+                    Gizmos.color = colorField[x, y];
+                    Gizmos.DrawCube(pos, new Vector3(cellSize * 0.9f, cellSize * 0.9f, 0));
                 }
             }
-            SetBoundary(b, x);
         }
-    }
-
-    void Advect(int b, float[,] d, float[,] d0, float[,] u, float[,] v, float dt)
-    {
-        float dt0 = dt * (gridSize - 2);
-        for (int i = 1; i < gridSize - 1; i++)
-        {
-            for (int j = 1; j < gridSize - 1; j++)
-            {
-                float x = i - dt0 * u[i, j];
-                float y = j - dt0 * v[i, j];
-
-                if (x < 0.5f) x = 0.5f;
-                if (x > gridSize - 2 + 0.5f) x = gridSize - 2 + 0.5f;
-                int i0 = (int)x;
-                int i1 = i0 + 1;
-
-                if (y < 0.5f) y = 0.5f;
-                if (y > gridSize - 2 + 0.5f) y = gridSize - 2 + 0.5f;
-                int j0 = (int)y;
-                int j1 = j0 + 1;
-
-                float s1 = x - i0;
-                float s0 = 1 - s1;
-                float t1 = y - j0;
-                float t0 = 1 - t1;
-
-                d[i, j] = s0 * (t0 * d0[i0, j0] + t1 * d0[i0, j1]) + s1 * (t0 * d0[i1, j0] + t1 * d0[i1, j1]);
-            }
-        }
-        SetBoundary(b, d);
-    }
-
-    void Project(float[,] u, float[,] v, float[,] p, float[,] div)
-    {
-        for (int i = 1; i < gridSize - 1; i++)
-        {
-            for (int j = 1; j < gridSize - 1; j++)
-            {
-                div[i, j] = -0.5f * (u[i + 1, j] - u[i - 1, j] + v[i, j + 1] - v[i, j - 1]) / gridSize;
-                p[i, j] = 0;
-            }
-        }
-        SetBoundary(0, div);
-        SetBoundary(0, p);
-
-        LinearSolve(0, p, div, 1, 4);
-
-        for (int i = 1; i < gridSize - 1; i++)
-        {
-            for (int j = 1; j < gridSize - 1; j++)
-            {
-                u[i, j] -= 0.5f * gridSize * (p[i + 1, j] - p[i - 1, j]);
-                v[i, j] -= 0.5f * gridSize * (p[i, j + 1] - p[i, j - 1]);
-            }
-        }
-        SetBoundary(1, u);
-        SetBoundary(2, v);
-    }
-
-    void SetBoundary(int b, float[,] x)
-    {
-        for (int i = 1; i < gridSize - 1; i++)
-        {
-            x[i, 0] = b == 2 ? -x[i, 1] : x[i, 1];
-            x[i, gridSize - 1] = b == 2 ? -x[i, gridSize - 2] : x[i, gridSize - 2];
-            x[0, i] = b == 1 ? -x[1, i] : x[1, i];
-            x[gridSize - 1, i] = b == 1 ? -x[gridSize - 2, i] : x[gridSize - 2, i];
-        }
-        x[0, 0] = 0.5f * (x[1, 0] + x[0, 1]);
-        x[0, gridSize - 1] = 0.5f * (x[1, gridSize - 1] + x[0, gridSize - 2]);
-        x[gridSize - 1, 0] = 0.5f * (x[gridSize - 2, 0] + x[gridSize - 1, 1]);
-        x[gridSize - 1, gridSize - 1] = 0.5f * (x[gridSize - 2, gridSize - 1] + x[gridSize - 1, gridSize - 2]);
-    }
-
-    void RenderDensity()
-    {
-        Texture2D texture = new Texture2D(gridSize, gridSize);
-        for (int i = 0; i < gridSize; i++)
-        {
-            for (int j = 0; j < gridSize; j++)
-            {
-                float d = density[i, j];
-                texture.SetPixel(i, j, new Color(d, d, d));
-            }
-        }
-        texture.Apply();
-
-        // Apply the texture to a quad or a plane to visualize the density
-        GetComponent<Renderer>().material.mainTexture = texture;
     }
 }

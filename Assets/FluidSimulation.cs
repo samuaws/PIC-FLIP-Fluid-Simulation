@@ -109,7 +109,7 @@ public class FluidSimulation : MonoBehaviour
             Particle particle = particles[i];
 
             // Update velocity and position
-            //particle.velocity += Vector2.up * gravity * Time.deltaTime;
+            particle.velocity += Vector2.up * gravity * Time.deltaTime;
             particle.position += particle.velocity * Time.deltaTime;
 
             // Resolve collisions with the bounds
@@ -454,8 +454,13 @@ public class FluidSimulation : MonoBehaviour
                 float distance = Vector2.Distance(particle.position, neighbor.position);
                 if (distance < smoothingLength)
                 {
-                    float q = distance / smoothingLength;
-                    float kernelValue = (1.0f - q) * (1.0f - q) * (1.0f - q);
+                    //float q = distance / smoothingLength;
+                    //float kernelValue = (1.0f - q) * (1.0f - q) * (1.0f - q);   
+                    //float kernelValue = q*q*q;
+
+                    float volume = Mathf.PI * Mathf.Pow(smoothingLength, 8) / 4;
+                    float value = Mathf.Max(0, smoothingLength * smoothingLength - distance * distance);
+                    float kernelValue = value * value * value / volume;
                     particle.density += neighbor.mass * kernelValue;
                 }
             }
@@ -528,7 +533,8 @@ public class FluidSimulation : MonoBehaviour
         {
             Particle particle = particles[i];
             Vector2 pressureForce = CalculatePressureForce(particle);
-            particle.velocity += pressureForce * Time.deltaTime / particle.mass;
+            particle.velocity = - pressureForce * Time.deltaTime / particle.mass;
+            //particle.velocity += new Vector2(0, gravity * particle.mass);
             particles[i] = particle; // Update the particle in the list
         }
     }

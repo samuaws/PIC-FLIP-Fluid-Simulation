@@ -528,14 +528,14 @@ MonoBehaviour:
   cellVisualizer: {fileID: 972634515}
   boundsSize: {x: 17.88, y: 9.81}
   particleSize: 0.5
-  gravity: -9.81
+  gravity: 0
   cellWidth: 1
-  activeCells: 20
+  activeCells: 15
   particleMass: 1
-  smoothingLength: 1
-  viscosity: 1
-  restDensity: 0.3
-  stiffnessConstant: 3
+  smoothingLength: 1.2
+  viscosity: 0
+  restDensity: 10
+  stiffnessConstant: 0.5
   visualizeGrid: 0
   visualizeFluidCells: 0
   visualizeCellsProperties: 1
