@@ -2,20 +2,26 @@ using UnityEngine;
 
 public class StableFluids : MonoBehaviour
 {
-    [SerializeField] int resolutionX = 16;
-    [SerializeField] int resolutionY = 9;
+    [SerializeField] int resolutionX = 512;
+    [SerializeField] int resolutionY = 512;
     [SerializeField] float deltaTime = 0.01f;
     [SerializeField] float cellSize = 1.0f;
-    [SerializeField] bool visualizeFluidCells = true;
     [SerializeField] bool randomizeVelocity = true;
     [SerializeField] float maxInitialVelocity = 1.0f;
     [SerializeField] float viscosity = 0.1f;
+    [SerializeField] Shader shader;
+    [SerializeField] Texture2D initialTexture;
 
     private Vector2[,] velocityField;
     private Vector2[,] tempField;
     private float[,] pressureField;
     private float[,] divField;
-    private Color[,] colorField;
+
+    private Material shaderMaterial;
+    private RenderTexture velocityTexture;
+    private RenderTexture colorRT1;
+    private RenderTexture colorRT2;
+    private bool isInitialized;
 
     void Start()
     {
@@ -24,18 +30,51 @@ public class StableFluids : MonoBehaviour
         {
             ApplyRandomInitialConditions();
         }
+        else if (initialTexture != null)
+        {
+            //ApplyInitialTexture();
+        }
         else
         {
             ApplyInitialConditions();
         }
+
+        shaderMaterial = new Material(shader);
+
+        velocityTexture = AllocateRenderTexture(2, resolutionX, resolutionY);
+        colorRT1 = AllocateRenderTexture(4, Screen.width, Screen.height);
+        colorRT2 = AllocateRenderTexture(4, Screen.width, Screen.height);
+
+        // Initialize colorRT1 with the initial texture
+        if (initialTexture != null)
+        {
+            Graphics.Blit(initialTexture, colorRT1);
+        }
+
+        UpdateVelocityTexture();
+        isInitialized = true;
     }
 
     void Update()
     {
+        if (!isInitialized) return;
+
         AdvectionStep();
         DiffusionStep();
         PressureProjectionStep();
-        UpdateColorField();
+        UpdateVelocityTexture();
+    }
+
+    RenderTexture AllocateRenderTexture(int componentCount, int width, int height)
+    {
+        var format = RenderTextureFormat.ARGBFloat;
+        if (componentCount == 1) format = RenderTextureFormat.RFloat;
+        if (componentCount == 2) format = RenderTextureFormat.RGFloat;
+
+        var rt = new RenderTexture(width, height, 0, format);
+        rt.enableRandomWrite = true;
+        rt.Create();
+        return rt;
     }
 
     void InitializeFields()
@@ -44,7 +83,6 @@ public class StableFluids : MonoBehaviour
         tempField = new Vector2[resolutionX, resolutionY];
         pressureField = new float[resolutionX, resolutionY];
         divField = new float[resolutionX, resolutionY];
-        colorField = new Color[resolutionX, resolutionY];
     }
 
     void ApplyInitialConditions()
@@ -67,6 +105,18 @@ public class StableFluids : MonoBehaviour
                 float randomX = Random.Range(-maxInitialVelocity, maxInitialVelocity);
                 float randomY = Random.Range(-maxInitialVelocity, maxInitialVelocity);
                 velocityField[x, y] = new Vector2(randomX, randomY);
+            }
+        }
+    }
+
+    void ApplyInitialTexture()
+    {
+        for (int y = 0; y < resolutionY; y++)
+        {
+            for (int x = 0; x < resolutionX; x++)
+            {
+                Color pixel = initialTexture.GetPixelBilinear((float)x / resolutionX, (float)y / resolutionY);
+                velocityField[x, y] = new Vector2(pixel.r, pixel.g);
             }
         }
     }
@@ -196,42 +246,38 @@ public class StableFluids : MonoBehaviour
         b = temp;
     }
 
-    void UpdateColorField()
+    void UpdateVelocityTexture()
     {
+        Texture2D texture = new Texture2D(resolutionX, resolutionY, TextureFormat.RGFloat, false);
         for (int y = 0; y < resolutionY; y++)
         {
             for (int x = 0; x < resolutionX; x++)
             {
                 Vector2 velocity = velocityField[x, y];
-                colorField[x, y] = new Color(velocity.x, velocity.y, 0.0f, 1.0f);
+                texture.SetPixel(x, y, new Color(velocity.x, velocity.y, 0.0f, 1.0f));
             }
         }
+        texture.Apply();
+        Graphics.Blit(texture, velocityTexture);
+        Destroy(texture);
     }
 
-    void OnDrawGizmos()
+    void OnRenderImage(RenderTexture source, RenderTexture destination)
     {
-        if (velocityField == null) return;
+        shaderMaterial.SetTexture("_VelocityField", velocityTexture);
+        shaderMaterial.SetTexture("_MainTex", colorRT1);
 
-        Gizmos.color = Color.white;
-        float inverseResolutionX = 1.0f / resolutionX;
-        float inverseResolutionY = 1.0f / resolutionY;
-        Vector3 bottomLeft = transform.position - new Vector3(resolutionX * cellSize * 0.5f, resolutionY * cellSize * 0.5f, 0);
+        var offs = Vector2.one * 1e+7f; // Placeholder for user input
+        shaderMaterial.SetVector("_ForceOrigin", offs);
+        shaderMaterial.SetFloat("_ForceExponent", 200.0f); // Example exponent value
 
-        for (int y = 0; y < resolutionY; y++)
-        {
-            for (int x = 0; x < resolutionX; x++)
-            {
-                Vector2 velocity = velocityField[x, y];
-                Vector3 pos = bottomLeft + new Vector3(x * cellSize, y * cellSize, 0);
-                Gizmos.color = Color.white;
-                Gizmos.DrawWireCube(pos, new Vector3(cellSize, cellSize, 0));
+        Graphics.Blit(colorRT1, colorRT2, shaderMaterial, 0);
 
-                if (visualizeFluidCells)
-                {
-                    Gizmos.color = colorField[x, y];
-                    Gizmos.DrawCube(pos, new Vector3(cellSize * 0.9f, cellSize * 0.9f, 0));
-                }
-            }
-        }
+        // Swap the color buffers
+        var temp = colorRT1;
+        colorRT1 = colorRT2;
+        colorRT2 = temp;
+
+        Graphics.Blit(colorRT1, destination, shaderMaterial, 1);
     }
 }
