@@ -18,13 +18,9 @@ Shader "Hidden/StableFluids"
 
     sampler2D _VelocityField;
 
-    float2 _ForceOrigin;
-    float _ForceExponent;
-
     half4 frag_advect(v2f_img i) : SV_Target
     {
         // Time parameters
-        float time = _Time.y;
         float deltaTime = unity_DeltaTime.x;
 
         // Aspect ratio coefficients
@@ -35,25 +31,12 @@ Shader "Hidden/StableFluids"
         float2 delta = tex2D(_VelocityField, i.uv).xy * aspect_inv * deltaTime;
         float3 color = tex2D(_MainTex, i.uv - delta).xyz;
 
-        // Dye (injection color)
-        float3 dye = saturate(sin(time * float3(2.72, 5.12, 4.98)) + 0.5);
-
-        // Blend dye with the color from the buffer.
-        float2 pos = (i.uv - 0.5) * aspect;
-        float amp = exp(-_ForceExponent * distance(_ForceOrigin, pos));
-        color = lerp(color, dye, saturate(amp * 100));
-
         return half4(color, 1);
     }
 
     half4 frag_render(v2f_img i) : SV_Target
     {
         half3 rgb = tex2D(_MainTex, i.uv).rgb;
-
-        // Mixing channels up to get slowly changing false colors
-        //rgb = sin(float3(3.43, 4.43, 3.84) * rgb +
-        //          float3(0.12, 0.23, 0.44) * _Time.y) * 0.5 + 0.5;
-
         return half4(GammaToLinearSpace(rgb), 1);
     }
 

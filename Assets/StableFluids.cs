@@ -1,4 +1,5 @@
 using UnityEngine;
+using TMPro;
 
 public class StableFluids : MonoBehaviour
 {
@@ -11,6 +12,9 @@ public class StableFluids : MonoBehaviour
     [SerializeField] float viscosity = 0.1f;
     [SerializeField] Shader shader;
     [SerializeField] Texture2D initialTexture;
+    [SerializeField] float force = 300;
+    [SerializeField] float forceExponent = 200;
+    [SerializeField] TextMeshProUGUI velocityText; // UI Text to display the velocity
 
     private Vector2[,] velocityField;
     private Vector2[,] tempField;
@@ -22,6 +26,7 @@ public class StableFluids : MonoBehaviour
     private RenderTexture colorRT1;
     private RenderTexture colorRT2;
     private bool isInitialized;
+    private Vector2 previousInput;
 
     void Start()
     {
@@ -59,10 +64,46 @@ public class StableFluids : MonoBehaviour
     {
         if (!isInitialized) return;
 
+        Vector2 forceOrigin = new Vector2(Input.mousePosition.x / Screen.width, Input.mousePosition.y / Screen.height);
+        Vector2 forceVector = Vector2.zero;
+
+        if (Input.GetMouseButton(1))
+        {
+            forceVector = Random.insideUnitCircle * 0.025f;
+        }
+        else if (Input.GetMouseButton(0))
+        {
+            Vector2 currentInput = new Vector2(Input.mousePosition.x / Screen.width, Input.mousePosition.y / Screen.height);
+            forceVector = (currentInput - previousInput) * 0.5f;
+            previousInput = currentInput;
+        }
+
+        AddForce(forceOrigin, forceVector, forceExponent);
+
         AdvectionStep();
-        DiffusionStep();
-        PressureProjectionStep();
+        //DiffusionStep();
+        //PressureProjectionStep();
         UpdateVelocityTexture();
+
+        // Check for mouse click to display velocity
+        if (Input.GetMouseButtonDown(0))
+        {
+            DisplayVelocityAtMousePosition();
+        }
+    }
+
+    void AddForce(Vector2 forceOrigin, Vector2 forceVector, float forceExponent)
+    {
+        for (int y = 0; y < resolutionY; y++)
+        {
+            for (int x = 0; x < resolutionX; x++)
+            {
+                Vector2 pos = new Vector2((x + 0.5f) / resolutionX, (y + 0.5f) / resolutionY);
+                float amp = Mathf.Exp(-forceExponent * Vector2.Distance(forceOrigin, pos));
+                print(forceVector * amp);
+                velocityField[x, y] += forceVector * amp *10000;
+            }
+        }
     }
 
     RenderTexture AllocateRenderTexture(int componentCount, int width, int height)
@@ -173,7 +214,8 @@ public class StableFluids : MonoBehaviour
 
     void DiffusionStep()
     {
-        float alpha = (cellSize * cellSize) / (viscosity * deltaTime);
+        float dx = 1.0f / resolutionY;
+        float alpha = dx * dx / (viscosity * deltaTime);
         float beta = 4.0f + alpha;
 
         for (int i = 0; i < 20; i++) // Perform multiple Jacobi iterations
@@ -185,7 +227,8 @@ public class StableFluids : MonoBehaviour
 
     void PressureProjectionStep()
     {
-        float alpha = -(cellSize * cellSize);
+        float dx = 1.0f / resolutionY;
+        float alpha = -dx * dx;
         float beta = 4.0f;
 
         // Compute divergence of velocity field
@@ -267,10 +310,6 @@ public class StableFluids : MonoBehaviour
         shaderMaterial.SetTexture("_VelocityField", velocityTexture);
         shaderMaterial.SetTexture("_MainTex", colorRT1);
 
-        var offs = Vector2.one * 1e+7f; // Placeholder for user input
-        shaderMaterial.SetVector("_ForceOrigin", offs);
-        shaderMaterial.SetFloat("_ForceExponent", 200.0f); // Example exponent value
-
         Graphics.Blit(colorRT1, colorRT2, shaderMaterial, 0);
 
         // Swap the color buffers
@@ -279,5 +318,21 @@ public class StableFluids : MonoBehaviour
         colorRT2 = temp;
 
         Graphics.Blit(colorRT1, destination, shaderMaterial, 1);
+    }
+
+    void DisplayVelocityAtMousePosition()
+    {
+        Vector2 mousePosition = Input.mousePosition;
+        int x = Mathf.FloorToInt(mousePosition.x / Screen.width * resolutionX);
+        int y = Mathf.FloorToInt(mousePosition.y / Screen.height * resolutionY);
+
+        if (x >= 0 && x < resolutionX && y >= 0 && y < resolutionY)
+        {
+            Vector2 velocity = velocityField[x, y];
+            if (velocityText != null)
+            {
+                velocityText.text = $"Velocity at ({x}, {y}): {velocity}";
+            }
+        }
     }
 }
