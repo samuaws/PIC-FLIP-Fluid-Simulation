@@ -81,8 +81,8 @@ public class StableFluids : MonoBehaviour
         AddForce(forceOrigin, forceVector, forceExponent);
 
         AdvectionStep();
-        //DiffusionStep();
-        //PressureProjectionStep();
+        DiffusionStep();
+        PressureProjectionStep();
         UpdateVelocityTexture();
 
         // Check for mouse click to display velocity
@@ -218,6 +218,8 @@ public class StableFluids : MonoBehaviour
         float alpha = dx * dx / (viscosity * deltaTime);
         float beta = 4.0f + alpha;
 
+        Debug.Log($"Alpha: {alpha}, Beta: {beta}");
+
         for (int i = 0; i < 20; i++) // Perform multiple Jacobi iterations
         {
             JacobiVector(velocityField, tempField, alpha, beta);
@@ -266,6 +268,11 @@ public class StableFluids : MonoBehaviour
             {
                 tempField[xCoord, y] = (b[xCoord, y] + alpha * (x[xCoord + 1, y] + x[xCoord - 1, y] +
                                                                 x[xCoord, y + 1] + x[xCoord, y - 1])) / beta;
+                // Debug output for intermediate values
+                if (xCoord   == 19) // Only print on the last iteration to reduce log spam
+                {
+                    Debug.Log($"Temp Field ({xCoord}, {y}): {tempField[xCoord, y]}");
+                }
             }
         }
     }
