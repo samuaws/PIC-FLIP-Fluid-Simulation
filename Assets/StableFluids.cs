@@ -223,7 +223,7 @@ public class StableFluids : MonoBehaviour
         for (int i = 0; i < 20; i++) // Perform multiple Jacobi iterations
         {
             JacobiVector(velocityField, tempField, alpha, beta);
-            Swap(ref velocityField, ref tempField);
+            Swap(ref velocityField, ref velocityField);
         }
     }
 
