@@ -490,6 +490,7 @@ GameObject:
   - component: {fileID: 972634513}
   - component: {fileID: 972634514}
   - component: {fileID: 972634515}
+  - component: {fileID: 972634516}
   m_Layer: 0
   m_Name: Simulation
   m_TagString: Untagged
@@ -519,7 +520,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 972634512}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d73a4727ba386a441b3e3cff69543f54, type: 3}
   m_Name: 
@@ -530,7 +531,7 @@ MonoBehaviour:
   particleSize: 0.5
   gravity: 0
   cellWidth: 1
-  activeCells: 15
+  activeCells: 50
   particleMass: 1
   smoothingLength: 1.2
   viscosity: 0
@@ -552,6 +553,28 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   cellInfoText: {fileID: 1663797948}
+--- !u!114 &972634516
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 972634512}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0ce95a401ac207445b459a2828236a8d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  resolutionX: 512
+  resolutionY: 512
+  deltaTime: 0.1
+  numParticles: 10000
+  maxInitialVelocity: 1
+  particlePrefab: {fileID: 4198366373603614794, guid: d20b6c275dbda624087539e4b078f4ad, type: 3}
+  boundsSize: {x: 9.7, y: 10}
+  particleSize: 0.034
+  dampingFactor: 0.8
+  gravity: -9.81
 --- !u!1 &1663797946
 GameObject:
   m_ObjectHideFlags: 0
