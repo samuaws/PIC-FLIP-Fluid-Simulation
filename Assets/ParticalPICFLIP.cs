@@ -1,7 +1,7 @@
 using UnityEngine;
 using System.Collections.Generic;
 
-public class ParticalPICFLIP : MonoBehaviour
+public class ParticlePICFLIP : MonoBehaviour
 {
     [SerializeField] int resolutionX = 512;
     [SerializeField] int resolutionY = 512;
@@ -13,6 +13,7 @@ public class ParticalPICFLIP : MonoBehaviour
     [SerializeField, Range(0.1f, 2.0f)] float particleSize = 0.5f;
     [SerializeField, Range(0.0f, 1.0f)] float dampingFactor = 0.8f;
     [SerializeField] float gravity = -9.81f;
+    [SerializeField, Range(0.0f, 1.0f)] float alpha = 0.05f;
 
     private List<Particle> particles;
     private Vector2[,] velocityField;
@@ -44,10 +45,10 @@ public class ParticalPICFLIP : MonoBehaviour
 
     void InitializeFields()
     {
-        velocityField = new Vector2[resolutionX, resolutionY];
-        prevVelocityField = new Vector2[resolutionX, resolutionY];
-        pressureField = new float[resolutionX, resolutionY];
-        divField = new float[resolutionX, resolutionY];
+        velocityField = new Vector2[resolutionX + 1, resolutionY + 1];  // MAC Grid
+        prevVelocityField = new Vector2[resolutionX + 1, resolutionY + 1];
+        pressureField = new float[resolutionX + 1, resolutionY + 1];
+        divField = new float[resolutionX + 1, resolutionY + 1];
     }
 
     void InitializeParticles()
@@ -95,18 +96,18 @@ public class ParticalPICFLIP : MonoBehaviour
 
     void ScatterParticlesToGrid()
     {
-        Vector2[,] newVelocityField = new Vector2[resolutionX, resolutionY];
-        float[,] weights = new float[resolutionX, resolutionY];
+        Vector2[,] newVelocityField = new Vector2[resolutionX + 1, resolutionY + 1];
+        float[,] weights = new float[resolutionX + 1, resolutionY + 1];
 
         foreach (Particle particle in particles)
         {
-            float gridX = (particle.position.x / boundsSize.x + 0.5f) * (resolutionX - 1);
-            float gridY = (particle.position.y / boundsSize.y + 0.5f) * (resolutionY - 1);
+            float gridX = (particle.position.x / boundsSize.x + 0.5f) * resolutionX;
+            float gridY = (particle.position.y / boundsSize.y + 0.5f) * resolutionY;
 
             int x0 = Mathf.FloorToInt(gridX);
-            int x1 = Mathf.Clamp(x0 + 1, 0, resolutionX - 1);
+            int x1 = Mathf.Clamp(x0 + 1, 0, resolutionX);
             int y0 = Mathf.FloorToInt(gridY);
-            int y1 = Mathf.Clamp(y0 + 1, 0, resolutionY - 1);
+            int y1 = Mathf.Clamp(y0 + 1, 0, resolutionY);
 
             float sx = gridX - x0;
             float sy = gridY - y0;
@@ -122,15 +123,19 @@ public class ParticalPICFLIP : MonoBehaviour
             weights[x1, y1] += sx * sy;
         }
 
-        for (int y = 0; y < resolutionY; y++)
+        for (int y = 0; y < resolutionY + 1; y++)
         {
-            for (int x = 0; x < resolutionX; x++)
+            for (int x = 0; x < resolutionX + 1; x++)
             {
                 if (weights[x, y] > 0)
                 {
                     newVelocityField[x, y] /= weights[x, y];
-                    velocityField[x, y] = newVelocityField[x, y];
                 }
+                else
+                {
+                    newVelocityField[x, y] = Vector2.zero;
+                }
+                velocityField[x, y] = newVelocityField[x, y];
             }
         }
     }
@@ -139,13 +144,13 @@ public class ParticalPICFLIP : MonoBehaviour
     {
         foreach (Particle particle in particles)
         {
-            float gridX = (particle.position.x / boundsSize.x + 0.5f) * (resolutionX - 1);
-            float gridY = (particle.position.y / boundsSize.y + 0.5f) * (resolutionY - 1);
+            float gridX = (particle.position.x / boundsSize.x + 0.5f) * resolutionX;
+            float gridY = (particle.position.y / boundsSize.y + 0.5f) * resolutionY;
 
             int x0 = Mathf.FloorToInt(gridX);
-            int x1 = Mathf.Clamp(x0 + 1, 0, resolutionX - 1);
+            int x1 = Mathf.Clamp(x0 + 1, 0, resolutionX);
             int y0 = Mathf.FloorToInt(gridY);
-            int y1 = Mathf.Clamp(y0 + 1, 0, resolutionY - 1);
+            int y1 = Mathf.Clamp(y0 + 1, 0, resolutionY);
 
             float sx = gridX - x0;
             float sy = gridY - y0;
@@ -175,7 +180,7 @@ public class ParticalPICFLIP : MonoBehaviour
             Vector2 picVelocity = interpolatedVelocity;
             Vector2 flipVelocity = particle.velocity + (interpolatedVelocity - interpolatedPrevVelocity);
 
-            particle.velocity = 0.95f * flipVelocity + 0.05f * picVelocity;
+            particle.velocity = alpha * picVelocity + (1 - alpha) * flipVelocity;
         }
     }
 
@@ -219,95 +224,144 @@ public class ParticalPICFLIP : MonoBehaviour
     void PressureProjectionStep()
     {
         float dx = 1.0f / resolutionY;
-        float alpha = -dx * dx;
-        float beta = 4.0f;
+        float beta = 4.0f / (dx * dx);
 
-        for (int y = 1; y < resolutionY - 1; y++)
+        ComputeDivergence();
+        SolvePressurePoissonCG(beta);
+        SubtractPressureGradient();
+        CopyVelocityField();
+    }
+
+    void ComputeDivergence()
+    {
+        for (int y = 1; y < resolutionY; y++)
         {
-            for (int x = 1; x < resolutionX - 1; x++)
+            for (int x = 1; x < resolutionX; x++)
             {
                 divField[x, y] = -0.5f * (velocityField[x + 1, y].x - velocityField[x - 1, y].x +
                                           velocityField[x, y + 1].y - velocityField[x, y - 1].y);
+            }
+        }
+    }
+
+    void SolvePressurePoissonCG(float beta)
+    {
+        int maxIterations = 100;
+        float tolerance = 1e-5f;
+        float[,] residual = new float[resolutionX + 1, resolutionY + 1];
+        float[,] direction = new float[resolutionX + 1, resolutionY + 1];
+        float[,] temp = new float[resolutionX + 1, resolutionY + 1];
+
+        // Initialize pressure field to zero
+        for (int y = 0; y < resolutionY + 1; y++)
+        {
+            for (int x = 0; x < resolutionX + 1; x++)
+            {
                 pressureField[x, y] = 0;
             }
         }
 
-        ApplyBoundaryConditions(divField);
-        ApplyBoundaryConditions(pressureField);
-
-        for (int i = 0; i < 50; i++)
+        // Compute initial residual and direction
+        for (int y = 1; y < resolutionY; y++)
         {
-            JacobiScalar(pressureField, divField, alpha, beta);
-            ApplyBoundaryConditions(pressureField);
+            for (int x = 1; x < resolutionX; x++)
+            {
+                float laplacian = -4.0f * pressureField[x, y] +
+                                  pressureField[x + 1, y] + pressureField[x - 1, y] +
+                                  pressureField[x, y + 1] + pressureField[x, y - 1];
+                residual[x, y] = divField[x, y] - beta * laplacian;
+                direction[x, y] = residual[x, y];
+            }
         }
 
-        for (int y = 1; y < resolutionY - 1; y++)
+        float residualDot = DotProduct(residual, residual);
+        if (residualDot < tolerance) return;
+
+        for (int iter = 0; iter < maxIterations; iter++)
         {
-            for (int x = 1; x < resolutionX - 1; x++)
+            // Apply laplacian to direction
+            for (int y = 1; y < resolutionY; y++)
+            {
+                for (int x = 1; x < resolutionX; x++)
+                {
+                    temp[x, y] = -4.0f * direction[x, y] +
+                                 direction[x + 1, y] + direction[x - 1, y] +
+                                 direction[x, y + 1] + direction[x, y - 1];
+                }
+            }
+
+            float directionDot = DotProduct(direction, temp);
+            float alpha = residualDot / directionDot;
+
+            // Update pressure field
+            for (int y = 1; y < resolutionY; y++)
+            {
+                for (int x = 1; x < resolutionX; x++)
+                {
+                    pressureField[x, y] += alpha * direction[x, y];
+                }
+            }
+
+            // Update residual
+            for (int y = 1; y < resolutionY; y++)
+            {
+                for (int x = 1; x < resolutionX; x++)
+                {
+                    residual[x, y] -= alpha * temp[x, y];
+                }
+            }
+
+            float newResidualDot = DotProduct(residual, residual);
+            if (newResidualDot < tolerance) break;
+
+            float betaCoeff = newResidualDot / residualDot;
+            residualDot = newResidualDot;
+
+            // Update direction
+            for (int y = 1; y < resolutionY; y++)
+            {
+                for (int x = 1; x < resolutionX; x++)
+                {
+                    direction[x, y] = residual[x, y] + betaCoeff * direction[x, y];
+                }
+            }
+        }
+    }
+
+    float DotProduct(float[,] a, float[,] b)
+    {
+        float result = 0;
+        for (int y = 1; y < resolutionY; y++)
+        {
+            for (int x = 1; x < resolutionX; x++)
+            {
+                result += a[x, y] * b[x, y];
+            }
+        }
+        return result;
+    }
+
+    void SubtractPressureGradient()
+    {
+        for (int y = 1; y < resolutionY; y++)
+        {
+            for (int x = 1; x < resolutionX; x++)
             {
                 velocityField[x, y] -= 0.5f * new Vector2(pressureField[x + 1, y] - pressureField[x - 1, y],
                                                           pressureField[x, y + 1] - pressureField[x, y - 1]);
             }
         }
+    }
 
-        for (int y = 0; y < resolutionY; y++)
+    void CopyVelocityField()
+    {
+        for (int y = 0; y < resolutionY + 1; y++)
         {
-            for (int x = 0; x < resolutionX; x++)
+            for (int x = 0; x < resolutionX + 1; x++)
             {
                 prevVelocityField[x, y] = velocityField[x, y];
             }
         }
-    }
-
-    void ApplyBoundaryConditions(float[,] field)
-    {
-        for (int x = 0; x < resolutionX; x++)
-        {
-            field[x, 0] = field[x, 1];
-            field[x, resolutionY - 1] = field[x, resolutionY - 2];
-        }
-
-        for (int y = 0; y < resolutionY; y++)
-        {
-            field[0, y] = field[1, y];
-            field[resolutionX - 1, y] = field[resolutionX - 2 , y];
-        }
-    }
-
-    void JacobiScalar(float[,] x, float[,] b, float alpha, float beta)
-    {
-        for (int y = 1; y < resolutionY - 1; y++)
-        {
-            for (int xCoord = 1; xCoord < resolutionX - 1; xCoord++)
-            {
-                pressureField[xCoord, y] = (b[xCoord, y] + alpha * (x[xCoord + 1, y] + x[xCoord - 1, y] +
-                                                                    x[xCoord, y + 1] + x[xCoord, y - 1])) / beta;
-            }
-        }
-    }
-
-    Vector2 BilinearSample(Vector2[,] field, float x, float y)
-    {
-        int x1 = Mathf.FloorToInt(x);
-        int x2 = Mathf.Clamp(x1 + 1, 0, resolutionX - 1);
-        int y1 = Mathf.FloorToInt(y);
-        int y2 = Mathf.Clamp(y1 + 1, 0, resolutionY - 1);
-
-        x1 = Mathf.Clamp(x1, 0, resolutionX - 1);
-        y1 = Mathf.Clamp(y1, 0, resolutionY - 1);
-
-        float t1 = x - x1;
-        float t2 = y - y1;
-
-        Vector2 v11 = field[x1, y1];
-        Vector2 v12 = field[x1, y2];
-        Vector2 v21 = field[x2, y1];
-        Vector2 v22 = field[x2, y2];
-
-        Vector2 v1 = Vector2.Lerp(v11, v12, t2);
-        Vector2 v2 = Vector2.Lerp(v21, v22, t2);
-
-        return Vector2.Lerp(v1, v2, t1);
     }
 
     void OnDrawGizmos()
