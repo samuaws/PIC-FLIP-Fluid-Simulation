@@ -9,6 +9,10 @@ public class CPUPICFLIP : MonoBehaviour
     public int numParticles = 100;
     public float viscosityCoefficient = 0.1f;
     public Vector2 gravity = new Vector2(0, -9.81f); // Gravity vector
+    public float maxVelocity = 10f; // Maximum allowed particle velocity
+    public float dampingFactor = 0.99f; // Damping factor to reduce particle energy
+    public float maxAllowedTimeStep = 0.01f; // Max allowed timestep for stability
+    public float correctionStrength = 0.25f; // Reduce the correction strength for stability
 
     private Grid grid;
     public List<Particle> particles;
@@ -21,7 +25,7 @@ public class CPUPICFLIP : MonoBehaviour
         // Initialize particles with random positions and velocities
         for (int i = 0; i < numParticles; i++)
         {
-            Vector2 randomPosition = new Vector2(Random.Range(0f, gridWidth * cellSize), Random.Range(0f, gridHeight * cellSize));
+            Vector2 randomPosition = new Vector2(Random.Range(0.1f, gridWidth * cellSize - 0.1f), Random.Range(0.1f, gridHeight * cellSize - 0.1f));
             Vector2 randomVelocity = new Vector2(Random.Range(-1f, 1f), Random.Range(-1f, 1f)); // Non-zero initial velocity
             particles.Add(new Particle(randomPosition, randomVelocity));
         }
@@ -29,15 +33,18 @@ public class CPUPICFLIP : MonoBehaviour
 
     void Update()
     {
-        float dt = Time.deltaTime;
+        float dt = Mathf.Min(Time.deltaTime, maxAllowedTimeStep);
 
         TransferParticleVelocitiesToGrid();
-        ApplyGravityToGrid(dt); // Apply gravity to grid velocities
+        ApplyGravityToGrid(dt); // Apply gravity directly to grid velocities
         ApplyViscosity(dt);
+        SmoothVelocityField();
         SolvePressure();
         UpdateParticleVelocitiesFromGrid();
         AdvectParticles(dt);
-        EnforceBoundaries(); // Ensure particles stay within grid boundaries
+        EnforceBoundaries();
+        ResolveParticleOverlap(cellSize * 0.5f); // Ensure particles are at least half a cell apart
+        DampenParticleVelocities(); // Dampen velocities to reduce instability
     }
 
     void TransferParticleVelocitiesToGrid()
@@ -108,7 +115,7 @@ public class CPUPICFLIP : MonoBehaviour
 
     void ApplyGravityToGrid(float dt)
     {
-        // Apply gravity to grid velocities
+        // Apply gravity directly to grid velocities
         for (int i = 0; i < grid.width; i++)
         {
             for (int j = 0; j < grid.height; j++)
@@ -135,9 +142,20 @@ public class CPUPICFLIP : MonoBehaviour
         }
     }
 
+    void SmoothVelocityField()
+    {
+        for (int i = 1; i < grid.width - 1; i++)
+        {
+            for (int j = 1; j < grid.height - 1; j++)
+            {
+                grid.velocity[i, j] = (grid.velocity[i, j] + grid.velocity[i + 1, j] + grid.velocity[i - 1, j] + grid.velocity[i, j + 1] + grid.velocity[i, j - 1]) / 5f;
+            }
+        }
+    }
+
     void SolvePressure()
     {
-        int iterations = 20; // Number of Jacobi iterations
+        int iterations = 60; // Increased from 40 to 60
         float alpha = 1.0f;
         float beta = 0.25f;
 
@@ -225,6 +243,12 @@ public class CPUPICFLIP : MonoBehaviour
         foreach (Particle particle in particles)
         {
             particle.position += particle.velocity * dt;
+
+            // Clamp the particle velocity to prevent instability
+            if (particle.velocity.magnitude > maxVelocity)
+            {
+                particle.velocity = particle.velocity.normalized * maxVelocity;
+            }
         }
     }
 
@@ -258,6 +282,34 @@ public class CPUPICFLIP : MonoBehaviour
         }
     }
 
+    void ResolveParticleOverlap(float minDistance)
+    {
+        //float correctionStrength = 0.25f; // Reduce the correction strength for stability
+        for (int i = 0; i < particles.Count; i++)
+        {
+            for (int j = i + 1; j < particles.Count; j++)
+            {
+                Vector2 direction = particles[i].position - particles[j].position;
+                float distance = direction.magnitude;
+
+                if (distance < minDistance)
+                {
+                    Vector2 correction = direction.normalized * (minDistance - distance) * correctionStrength;
+                    particles[i].position += correction;
+                    particles[j].position -= correction;
+                }
+            }
+        }
+    }
+
+    void DampenParticleVelocities()
+    {
+        foreach (Particle particle in particles)
+        {
+            particle.velocity *= dampingFactor; // Apply damping to reduce energy
+        }
+    }
+
     void OnDrawGizmos()
     {
         Gizmos.color = Color.blue;
@@ -277,7 +329,7 @@ public class CPUPICFLIP : MonoBehaviour
                 for (int j = 0; j < grid.height; j++)
                 {
                     Vector2 cellCenter = new Vector2(i * grid.cellSize, j * grid.cellSize);
-                    Gizmos.DrawLine(cellCenter, cellCenter + grid.velocity[i, j]);
+                    //Gizmos.DrawLine(cellCenter, cellCenter + grid.velocity[i, j]);
                 }
             }
         }
