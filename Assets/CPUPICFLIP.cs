@@ -1,0 +1,317 @@
+using UnityEngine;
+using System.Collections.Generic;
+
+public class CPUPICFLIP : MonoBehaviour
+{
+    public int gridWidth = 20;
+    public int gridHeight = 20;
+    public float cellSize = 0.5f;
+    public int numParticles = 100;
+    public float viscosityCoefficient = 0.1f;
+    public Vector2 gravity = new Vector2(0, -9.81f); // Gravity vector
+
+    private Grid grid;
+    public List<Particle> particles;
+
+    void Start()
+    {
+        grid = new Grid(gridWidth, gridHeight, cellSize);
+        particles = new List<Particle>();
+
+        // Initialize particles with random positions and velocities
+        for (int i = 0; i < numParticles; i++)
+        {
+            Vector2 randomPosition = new Vector2(Random.Range(0f, gridWidth * cellSize), Random.Range(0f, gridHeight * cellSize));
+            Vector2 randomVelocity = new Vector2(Random.Range(-1f, 1f), Random.Range(-1f, 1f)); // Non-zero initial velocity
+            particles.Add(new Particle(randomPosition, randomVelocity));
+        }
+    }
+
+    void Update()
+    {
+        float dt = Time.deltaTime;
+
+        TransferParticleVelocitiesToGrid();
+        ApplyGravityToGrid(dt); // Apply gravity to grid velocities
+        ApplyViscosity(dt);
+        SolvePressure();
+        UpdateParticleVelocitiesFromGrid();
+        AdvectParticles(dt);
+        EnforceBoundaries(); // Ensure particles stay within grid boundaries
+    }
+
+    void TransferParticleVelocitiesToGrid()
+    {
+        // Reset grid velocities and weights
+        for (int i = 0; i < grid.width; i++)
+        {
+            for (int j = 0; j < grid.height; j++)
+            {
+                grid.velocity[i, j] = Vector2.zero;
+                grid.weights[i, j] = 0f; // Reset the weights
+            }
+        }
+
+        // Transfer particle velocities to the grid
+        foreach (Particle particle in particles)
+        {
+            // Grid cell coordinates
+            int x0 = Mathf.FloorToInt(particle.position.x / grid.cellSize);
+            int y0 = Mathf.FloorToInt(particle.position.y / grid.cellSize);
+            int x1 = x0 + 1;
+            int y1 = y0 + 1;
+
+            // Interpolation weights
+            float tx = (particle.position.x / grid.cellSize) - x0;
+            float ty = (particle.position.y / grid.cellSize) - y0;
+
+            float w00 = (1 - tx) * (1 - ty); // Top-left weight
+            float w10 = tx * (1 - ty);       // Top-right weight
+            float w01 = (1 - tx) * ty;       // Bottom-left weight
+            float w11 = tx * ty;             // Bottom-right weight
+
+            // Add weighted velocities to grid points
+            if (x0 >= 0 && x0 < grid.width && y0 >= 0 && y0 < grid.height)
+            {
+                grid.velocity[x0, y0] += particle.velocity * w00;
+                grid.weights[x0, y0] += w00;
+            }
+            if (x1 >= 0 && x1 < grid.width && y0 >= 0 && y0 < grid.height)
+            {
+                grid.velocity[x1, y0] += particle.velocity * w10;
+                grid.weights[x1, y0] += w10;
+            }
+            if (x0 >= 0 && x0 < grid.width && y1 >= 0 && y1 < grid.height)
+            {
+                grid.velocity[x0, y1] += particle.velocity * w01;
+                grid.weights[x0, y1] += w01;
+            }
+            if (x1 >= 0 && x1 < grid.width && y1 >= 0 && y1 < grid.height)
+            {
+                grid.velocity[x1, y1] += particle.velocity * w11;
+                grid.weights[x1, y1] += w11;
+            }
+        }
+
+        // Normalize the grid velocities by their corresponding weights
+        for (int i = 0; i < grid.width; i++)
+        {
+            for (int j = 0; j < grid.height; j++)
+            {
+                if (grid.weights[i, j] > 0f)
+                {
+                    grid.velocity[i, j] /= grid.weights[i, j];
+                }
+            }
+        }
+    }
+
+    void ApplyGravityToGrid(float dt)
+    {
+        // Apply gravity to grid velocities
+        for (int i = 0; i < grid.width; i++)
+        {
+            for (int j = 0; j < grid.height; j++)
+            {
+                grid.velocity[i, j] += gravity * dt;
+            }
+        }
+    }
+
+    void ApplyViscosity(float dt)
+    {
+        for (int i = 1; i < grid.width - 1; i++)
+        {
+            for (int j = 1; j < grid.height - 1; j++)
+            {
+                Vector2 velocity = grid.velocity[i, j];
+
+                Vector2 laplacian = grid.velocity[i - 1, j] + grid.velocity[i + 1, j] +
+                                    grid.velocity[i, j - 1] + grid.velocity[i, j + 1] -
+                                    4 * velocity;
+
+                grid.velocity[i, j] += viscosityCoefficient * laplacian * dt;
+            }
+        }
+    }
+
+    void SolvePressure()
+    {
+        int iterations = 20; // Number of Jacobi iterations
+        float alpha = 1.0f;
+        float beta = 0.25f;
+
+        // Initialize the pressure field with zero
+        for (int i = 0; i < grid.width; i++)
+        {
+            for (int j = 0; j < grid.height; j++)
+            {
+                grid.pressure[i, j] = 0f;
+            }
+        }
+
+        for (int k = 0; k < iterations; k++)
+        {
+            for (int i = 1; i < grid.width - 1; i++)
+            {
+                for (int j = 1; j < grid.height - 1; j++)
+                {
+                    // Calculate divergence of velocity field with a minus sign to prevent clumping
+                    float divergence = -((grid.velocity[i + 1, j].x - grid.velocity[i - 1, j].x +
+                                          grid.velocity[i, j + 1].y - grid.velocity[i, j - 1].y) * 0.5f);
+
+                    // Jacobi iteration to solve for pressure
+                    grid.pressure[i, j] = (divergence - alpha * (grid.pressure[i + 1, j] + grid.pressure[i - 1, j] +
+                                                                 grid.pressure[i, j + 1] + grid.pressure[i, j - 1])) * beta;
+                }
+            }
+        }
+
+        // Correct the velocity field using the pressure gradient
+        for (int i = 1; i < grid.width - 1; i++)
+        {
+            for (int j = 1; j < grid.height - 1; j++)
+            {
+                grid.velocity[i, j].x -= 0.5f * (grid.pressure[i + 1, j] - grid.pressure[i - 1, j]);
+                grid.velocity[i, j].y -= 0.5f * (grid.pressure[i, j + 1] - grid.pressure[i, j - 1]);
+            }
+        }
+    }
+
+    void UpdateParticleVelocitiesFromGrid()
+    {
+        foreach (Particle particle in particles)
+        {
+            int x0 = Mathf.FloorToInt(particle.position.x / grid.cellSize);
+            int y0 = Mathf.FloorToInt(particle.position.y / grid.cellSize);
+            int x1 = x0 + 1;
+            int y1 = y0 + 1;
+
+            // Interpolation weights
+            float tx = (particle.position.x / grid.cellSize) - x0;
+            float ty = (particle.position.y / grid.cellSize) - y0;
+
+            float w00 = (1 - tx) * (1 - ty);
+            float w10 = tx * (1 - ty);
+            float w01 = (1 - tx) * ty;
+            float w11 = tx * ty;
+
+            // Update particle velocity using bilinear interpolation of grid velocities
+            Vector2 newVelocity = Vector2.zero;
+
+            if (x0 >= 0 && x0 < grid.width && y0 >= 0 && y0 < grid.height)
+            {
+                newVelocity += grid.velocity[x0, y0] * w00;
+            }
+            if (x1 >= 0 && x1 < grid.width && y0 >= 0 && y0 < grid.height)
+            {
+                newVelocity += grid.velocity[x1, y0] * w10;
+            }
+            if (x0 >= 0 && x0 < grid.width && y1 >= 0 && y1 < grid.height)
+            {
+                newVelocity += grid.velocity[x0, y1] * w01;
+            }
+            if (x1 >= 0 && x1 < grid.width && y1 >= 0 && y1 < grid.height)
+            {
+                newVelocity += grid.velocity[x1, y1] * w11;
+            }
+
+            particle.velocity = newVelocity;
+        }
+    }
+
+    void AdvectParticles(float dt)
+    {
+        foreach (Particle particle in particles)
+        {
+            particle.position += particle.velocity * dt;
+        }
+    }
+
+    void EnforceBoundaries()
+    {
+        foreach (Particle particle in particles)
+        {
+            // Reflect particles off the left and right boundaries
+            if (particle.position.x < 0)
+            {
+                particle.position.x = 0;
+                particle.velocity.x *= -1;
+            }
+            else if (particle.position.x > gridWidth * cellSize)
+            {
+                particle.position.x = gridWidth * cellSize;
+                particle.velocity.x *= -1;
+            }
+
+            // Reflect particles off the top and bottom boundaries
+            if (particle.position.y < 0)
+            {
+                particle.position.y = 0;
+                particle.velocity.y *= -1;
+            }
+            else if (particle.position.y > gridHeight * cellSize)
+            {
+                particle.position.y = gridHeight * cellSize;
+                particle.velocity.y *= -1;
+            }
+        }
+    }
+
+    void OnDrawGizmos()
+    {
+        Gizmos.color = Color.blue;
+        if (particles != null)
+        {
+            foreach (Particle particle in particles)
+            {
+                Gizmos.DrawSphere(particle.position, 0.1f);
+            }
+        }
+
+        Gizmos.color = Color.red;
+        if (grid != null && grid.velocity != null)
+        {
+            for (int i = 0; i < grid.width; i++)
+            {
+                for (int j = 0; j < grid.height; j++)
+                {
+                    Vector2 cellCenter = new Vector2(i * grid.cellSize, j * grid.cellSize);
+                    Gizmos.DrawLine(cellCenter, cellCenter + grid.velocity[i, j]);
+                }
+            }
+        }
+    }
+}
+
+public class Grid
+{
+    public Vector2[,] velocity;
+    public float[,] pressure;
+    public float[,] weights; // New array to store the weights
+
+    public int width, height;
+    public float cellSize;
+
+    public Grid(int width, int height, float cellSize)
+    {
+        this.width = width;
+        this.height = height;
+        this.cellSize = cellSize;
+        velocity = new Vector2[width, height];
+        pressure = new float[width, height];
+        weights = new float[width, height]; // Initialize the weights array
+    }
+}
+
+public class Particle
+{
+    public Vector2 position;
+    public Vector2 velocity;
+
+    public Particle(Vector2 position, Vector2 velocity)
+    {
+        this.position = position;
+        this.velocity = velocity;
+    }
+}
