@@ -660,16 +660,16 @@ MonoBehaviour:
   gridWidth: 20
   gridHeight: 20
   cellSize: 0.5
-  numParticles: 500
+  numParticles: 1000
   viscosityCoefficient: 0.1
-  gravity: {x: 0, y: -30}
-  maxVelocity: 1000
+  gravity: {x: 0, y: -10}
+  maxVelocity: 10
   dampingFactor: 0
   maxAllowedTimeStep: 0.01
   correctionStrength: 0.2
-  showGrid: 1
+  showGrid: 0
   showBounds: 1
-  showVelocityField: 1
+  showVelocityField: 0
 --- !u!1 &1663797946
 GameObject:
   m_ObjectHideFlags: 0
