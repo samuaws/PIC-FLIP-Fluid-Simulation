@@ -7,12 +7,17 @@ public class CPUPICFLIP : MonoBehaviour
     public int gridHeight = 20;
     public float cellSize = 0.5f;
     public int numParticles = 100;
-    public float viscosityCoefficient = 0.1f;
+    public float viscosityCoefficient = 0.01f; // Lower viscosity for water-like behavior
     public Vector2 gravity = new Vector2(0, -9.81f); // Gravity vector
     public float maxVelocity = 10f; // Maximum allowed particle velocity
     public float dampingFactor = 0.99f; // Damping factor to reduce particle energy
     public float maxAllowedTimeStep = 0.01f; // Max allowed timestep for stability
     public float correctionStrength = 0.25f; // Reduce the correction strength for stability
+
+    // Visualization toggles
+    public bool showGrid = true;
+    public bool showBounds = true;
+    public bool showVelocityField = true;
 
     private Grid grid;
     public List<Particle> particles;
@@ -36,15 +41,13 @@ public class CPUPICFLIP : MonoBehaviour
         float dt = Mathf.Min(Time.deltaTime, maxAllowedTimeStep);
 
         TransferParticleVelocitiesToGrid();
-        ApplyGravityToGrid(dt); // Apply gravity directly to grid velocities
-        ApplyViscosity(dt);
-        SmoothVelocityField();
-        SolvePressure();
+        ApplyGravityToGrid(dt); // Apply gravity first
+        SolvePressure(); // Pressure projection
         UpdateParticleVelocitiesFromGrid();
         AdvectParticles(dt);
         EnforceBoundaries();
         ResolveParticleOverlap(cellSize * 0.5f); // Ensure particles are at least half a cell apart
-        DampenParticleVelocities(); // Dampen velocities to reduce instability
+        // Optionally dampen particle velocities if necessary
     }
 
     void TransferParticleVelocitiesToGrid()
@@ -142,20 +145,9 @@ public class CPUPICFLIP : MonoBehaviour
         }
     }
 
-    void SmoothVelocityField()
-    {
-        for (int i = 1; i < grid.width - 1; i++)
-        {
-            for (int j = 1; j < grid.height - 1; j++)
-            {
-                grid.velocity[i, j] = (grid.velocity[i, j] + grid.velocity[i + 1, j] + grid.velocity[i - 1, j] + grid.velocity[i, j + 1] + grid.velocity[i, j - 1]) / 5f;
-            }
-        }
-    }
-
     void SolvePressure()
     {
-        int iterations = 60; // Increased from 40 to 60
+        int iterations = 60; // Number of iterations for Gauss-Seidel solver
         float alpha = 1.0f;
         float beta = 0.25f;
 
@@ -174,26 +166,47 @@ public class CPUPICFLIP : MonoBehaviour
             {
                 for (int j = 1; j < grid.height - 1; j++)
                 {
-                    // Calculate divergence of velocity field with a minus sign to prevent clumping
-                    float divergence = -((grid.velocity[i + 1, j].x - grid.velocity[i - 1, j].x +
-                                          grid.velocity[i, j + 1].y - grid.velocity[i, j - 1].y) * 0.5f);
+                    // Calculate divergence
+                    float divergence = (grid.velocity[i + 1, j].x - grid.velocity[i, j].x +
+                                        grid.velocity[i, j + 1].y - grid.velocity[i, j].y);
 
-                    // Jacobi iteration to solve for pressure
-                    grid.pressure[i, j] = (divergence - alpha * (grid.pressure[i + 1, j] + grid.pressure[i - 1, j] +
-                                                                 grid.pressure[i, j + 1] + grid.pressure[i, j - 1])) * beta;
+                    // Apply solid boundary conditions (s = 0 for solids, 1 for fluid)
+                    float s = (IsSolid(i - 1, j) ? 0f : 1f) +
+                              (IsSolid(i + 1, j) ? 0f : 1f) +
+                              (IsSolid(i, j - 1) ? 0f : 1f) +
+                              (IsSolid(i, j + 1) ? 0f : 1f);
+
+                    if (s > 0)
+                    {
+                        // Gauss-Seidel iteration
+                        grid.pressure[i, j] = (divergence - alpha * (GetPressure(i - 1, j) + GetPressure(i + 1, j) +
+                                                                     GetPressure(i, j - 1) + GetPressure(i, j + 1))) / s;
+
+                        // Update velocities based on the pressure
+                        grid.velocity[i, j].x += divergence * (IsSolid(i - 1, j) ? 0f : 1f) / s;
+                        grid.velocity[i + 1, j].x -= divergence * (IsSolid(i + 1, j) ? 0f : 1f) / s;
+                        grid.velocity[i, j].y += divergence * (IsSolid(i, j - 1) ? 0f : 1f) / s;
+                        grid.velocity[i, j + 1].y -= divergence * (IsSolid(i, j + 1) ? 0f : 1f) / s;
+                    }
                 }
             }
         }
+    }
 
-        // Correct the velocity field using the pressure gradient
-        for (int i = 1; i < grid.width - 1; i++)
+    float GetPressure(int i, int j)
+    {
+        if (i < 0 || i >= grid.width || j < 0 || j >= grid.height)
         {
-            for (int j = 1; j < grid.height - 1; j++)
-            {
-                grid.velocity[i, j].x -= 0.5f * (grid.pressure[i + 1, j] - grid.pressure[i - 1, j]);
-                grid.velocity[i, j].y -= 0.5f * (grid.pressure[i, j + 1] - grid.pressure[i, j - 1]);
-            }
+            return 0f; // Assume solid boundaries outside the grid
         }
+        return grid.pressure[i, j];
+    }
+
+    bool IsSolid(int i, int j)
+    {
+        // Assume no solid boundaries in this basic implementation
+        // You can modify this method to add solid cells if needed
+        return false;
     }
 
     void UpdateParticleVelocitiesFromGrid()
@@ -284,7 +297,6 @@ public class CPUPICFLIP : MonoBehaviour
 
     void ResolveParticleOverlap(float minDistance)
     {
-        //float correctionStrength = 0.25f; // Reduce the correction strength for stability
         for (int i = 0; i < particles.Count; i++)
         {
             for (int j = i + 1; j < particles.Count; j++)
@@ -312,6 +324,7 @@ public class CPUPICFLIP : MonoBehaviour
 
     void OnDrawGizmos()
     {
+        // Draw particles
         Gizmos.color = Color.blue;
         if (particles != null)
         {
@@ -321,15 +334,41 @@ public class CPUPICFLIP : MonoBehaviour
             }
         }
 
-        Gizmos.color = Color.red;
-        if (grid != null && grid.velocity != null)
+        // Draw grid
+        if (showGrid)
         {
+            Gizmos.color = Color.gray;
+            for (int i = 0; i <= grid.width; i++)
+            {
+                Gizmos.DrawLine(new Vector3(i * grid.cellSize, 0, 0), new Vector3(i * grid.cellSize, grid.height * grid.cellSize, 0));
+            }
+            for (int j = 0; j <= grid.height; j++)
+            {
+                Gizmos.DrawLine(new Vector3(0, j * grid.cellSize, 0), new Vector3(grid.width * grid.cellSize, j * grid.cellSize, 0));
+            }
+        }
+
+        // Draw grid boundaries
+        if (showBounds)
+        {
+            Gizmos.color = Color.yellow;
+            Gizmos.DrawLine(new Vector3(0, 0, 0), new Vector3(grid.width * grid.cellSize, 0, 0));
+            Gizmos.DrawLine(new Vector3(0, 0, 0), new Vector3(0, grid.height * grid.cellSize, 0));
+            Gizmos.DrawLine(new Vector3(grid.width * grid.cellSize, 0, 0), new Vector3(grid.width * grid.cellSize, grid.height * grid.cellSize, 0));
+            Gizmos.DrawLine(new Vector3(0, grid.height * grid.cellSize, 0), new Vector3(grid.width * grid.cellSize, grid.height * grid.cellSize, 0));
+        }
+
+        // Draw velocity field
+        if (showVelocityField && grid != null && grid.velocity != null)
+        {
+            Gizmos.color = Color.red;
             for (int i = 0; i < grid.width; i++)
             {
                 for (int j = 0; j < grid.height; j++)
                 {
-                    Vector2 cellCenter = new Vector2(i * grid.cellSize, j * grid.cellSize);
-                    //Gizmos.DrawLine(cellCenter, cellCenter + grid.velocity[i, j]);
+                    Vector3 cellCenter = new Vector3(i * grid.cellSize + grid.cellSize / 2, j * grid.cellSize + grid.cellSize / 2, 0);
+                    Vector3 velocity = new Vector3(grid.velocity[i, j].x, grid.velocity[i, j].y, 0);
+                    Gizmos.DrawLine(cellCenter, cellCenter + velocity * 0.5f); // Scale the velocity for better visualization
                 }
             }
         }
