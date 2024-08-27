@@ -42,14 +42,14 @@ public class CPUPICFLIP : MonoBehaviour
         InterlockedAddWeight();
         SetNeighborGridTypes();
         CalcGridWeight();
-        ProjectDensity();
-        CalcPositionModify();
-        UpdatePosition();
 
         TransferParticleVelocitiesToGrid();
         ApplyGravityToGrid(dt);
         SolvePressure();
         UpdateParticleVelocitiesFromGrid();
+        ProjectDensity();
+        CalcPositionModify();
+        UpdatePosition();
         AdvectParticles(dt);
         EnforceBoundaries();
         ResolveParticleOverlap(cellSize * 0.5f);
@@ -407,7 +407,7 @@ public class CPUPICFLIP : MonoBehaviour
 
     bool IsSolid(int i, int j)
     {
-        return false; // Adjust this method to account for actual solid cells if needed
+        return false;
     }
 
     void UpdateParticleVelocitiesFromGrid()

@@ -1,0 +1,20 @@
+#pragma kernel ComputeDivergence
+
+int gridResolution;
+float cellSize;
+
+RWStructuredBuffer<float> divergence;   // Divergence field
+RWStructuredBuffer<float3> velocities;  // Grid velocities
+
+[numthreads(8, 8, 8)]
+void ComputeDivergence(uint3 id : SV_DispatchThreadID)
+{
+    int index = id.x + id.y * gridResolution + id.z * gridResolution * gridResolution;
+
+    float3 gradient;
+    gradient.x = (velocities[index + 1] - velocities[index - 1]).x;
+    gradient.y = (velocities[index + gridResolution] - velocities[index - gridResolution]).y;
+    gradient.z = (velocities[index + gridResolution * gridResolution] - velocities[index - gridResolution * gridResolution]).z;
+
+    divergence[index] = (gradient.x + gradient.y + gradient.z) / (2.0f * cellSize);
+}

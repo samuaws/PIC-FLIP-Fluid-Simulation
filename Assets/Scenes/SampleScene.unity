@@ -488,6 +488,8 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 972634513}
+  - component: {fileID: 972634523}
+  - component: {fileID: 972634522}
   - component: {fileID: 972634520}
   - component: {fileID: 972634519}
   - component: {fileID: 972634518}
@@ -652,7 +654,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 972634512}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 811b9216d95f72a4d969264d3d2b656f, type: 3}
   m_Name: 
@@ -662,14 +664,58 @@ MonoBehaviour:
   cellSize: 0.5
   numParticles: 1000
   viscosityCoefficient: 0.1
-  gravity: {x: 0, y: -10}
+  gravity: {x: 0, y: -9.81}
   maxVelocity: 10
   dampingFactor: 0
   maxAllowedTimeStep: 0.01
   correctionStrength: 0.2
   showGrid: 0
   showBounds: 1
-  showVelocityField: 0
+  showVelocityField: 1
+--- !u!114 &972634522
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 972634512}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8cb7413deed514749bf9973954a07732, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  gridResolution: 64
+  cellSize: 0.7
+  numParticles: 15
+  particleRadius: 1
+  timeStep: 0.01
+  viscosity: 0.01
+--- !u!114 &972634523
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 972634512}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6ef4280e74094de4f86111f92b0bd1d4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  gridWidth: 10
+  gridHeight: 10
+  gridDepth: 10
+  cellSize: 0.5
+  numParticles: 5000
+  viscosityCoefficient: 0.01
+  gravity: {x: 0, y: -9.81, z: 0}
+  maxVelocity: 10
+  dampingFactor: 0.99
+  maxAllowedTimeStep: 10
+  correctionStrength: 0.25
+  showGrid: 0
+  showBounds: 1
+  showVelocityField: 1
 --- !u!1 &1663797946
 GameObject:
   m_ObjectHideFlags: 0
