@@ -447,7 +447,7 @@ Camera:
   near clip plane: 0.3
   far clip plane: 1000
   field of view: 60
-  orthographic: 1
+  orthographic: 0
   orthographic size: 6
   m_Depth: -1
   m_CullingMask:
@@ -473,7 +473,7 @@ Transform:
   m_GameObject: {fileID: 963194225}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 6, y: 1, z: -10}
+  m_LocalPosition: {x: -0.01, y: 0, z: -10.02}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -488,6 +488,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 972634513}
+  - component: {fileID: 972634524}
   - component: {fileID: 972634523}
   - component: {fileID: 972634522}
   - component: {fileID: 972634520}
@@ -697,14 +698,14 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 972634512}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 6ef4280e74094de4f86111f92b0bd1d4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  gridWidth: 5
-  gridHeight: 5
-  gridDepth: 5
+  gridWidth: 20
+  gridHeight: 20
+  gridDepth: 20
   cellSize: 0.5
   numParticles: 700
   viscosityCoefficient: 0.01
@@ -712,10 +713,40 @@ MonoBehaviour:
   maxVelocity: 10
   dampingFactor: 0.99
   maxAllowedTimeStep: 10
-  correctionStrength: 0.2
+  flipPicBlend: 0.95
   showGrid: 0
   showBounds: 1
   showVelocityField: 0
+--- !u!114 &972634524
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 972634512}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 585bd75366f5f484c8fb290e0e097136, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  gravity: -9.81
+  dt: 0.008333334
+  flipRatio: 0.9
+  numPressureIters: 100
+  numParticleIters: 2
+  frameNr: 0
+  overRelaxation: 1.9
+  compensateDrift: 1
+  separateParticles: 1
+  obstacleX: 0
+  obstacleY: 0
+  obstacleRadius: 0.15
+  paused: 0
+  showObstacle: 1
+  obstacleVelX: 0
+  obstacleVelY: 0
+  showParticles: 1
+  showGrid: 0
 --- !u!1 &1663797946
 GameObject:
   m_ObjectHideFlags: 0
