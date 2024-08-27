@@ -47,6 +47,8 @@ public class CPUPICFLIP3D : MonoBehaviour
         SetNeighborGridTypes();
         CalcGridWeight();
 
+        CalculateDensity(); // Calculate density before solving pressure
+
         TransferParticleVelocitiesToGrid();
         ApplyGravityToGrid(dt);
         SolvePressure();
@@ -62,7 +64,7 @@ public class CPUPICFLIP3D : MonoBehaviour
     void OnDrawGizmos()
     {
         // Draw particles
-        Gizmos.color = Color.blue;
+        Gizmos.color = Color.cyan;
         if (particles != null)
         {
             foreach (Particle3D particle in particles)
@@ -254,6 +256,47 @@ public class CPUPICFLIP3D : MonoBehaviour
         }
     }
 
+    void CalculateDensity()
+    {
+        // Reset density field
+        for (int i = 0; i < grid.width; i++)
+        {
+            for (int j = 0; j < grid.height; j++)
+            {
+                for (int k = 0; k < grid.depth; k++)
+                {
+                    grid.density[i, j, k] = 0f;
+                }
+            }
+        }
+
+        // Accumulate particle contributions to grid cells
+        foreach (Particle3D particle in particles)
+        {
+            int x = Mathf.FloorToInt(particle.position.x / grid.cellSize);
+            int y = Mathf.FloorToInt(particle.position.y / grid.cellSize);
+            int z = Mathf.FloorToInt(particle.position.z / grid.cellSize);
+
+            if (x >= 0 && x < grid.width && y >= 0 && y < grid.height && z >= 0 && z < grid.depth)
+            {
+                grid.density[x, y, z] += 1f; // Each particle contributes to the density
+            }
+        }
+
+        // Normalize the density to account for grid cell size
+        float cellVolume = grid.cellSize * grid.cellSize * grid.cellSize;
+        for (int i = 0; i < grid.width; i++)
+        {
+            for (int j = 0; j < grid.height; j++)
+            {
+                for (int k = 0; k < grid.depth; k++)
+                {
+                    grid.density[i, j, k] /= cellVolume;
+                }
+            }
+        }
+    }
+
     void ProjectDensity()
     {
         for (int k = 0; k < 60; k++)
@@ -424,6 +467,7 @@ public class CPUPICFLIP3D : MonoBehaviour
         }
     }
 
+
     void ApplyGravityToGrid(float dt)
     {
         for (int i = 0; i < grid.width; i++)
@@ -440,10 +484,11 @@ public class CPUPICFLIP3D : MonoBehaviour
 
     void SolvePressure()
     {
-        int iterations = 60;
+        int iterations = 60; // Number of iterations for pressure solver
         float alpha = 1.0f;
         float beta = 0.25f;
 
+        // Initialize pressure to zero
         for (int i = 0; i < grid.width; i++)
         {
             for (int j = 0; j < grid.height; j++)
@@ -455,6 +500,7 @@ public class CPUPICFLIP3D : MonoBehaviour
             }
         }
 
+        // Pressure solve iterations
         for (int l = 0; l < iterations; l++)
         {
             for (int i = 1; i < grid.width - 1; i++)
@@ -463,29 +509,20 @@ public class CPUPICFLIP3D : MonoBehaviour
                 {
                     for (int k = 1; k < grid.depth - 1; k++)
                     {
-                        float divergence = (grid.velocity[i + 1, j, k].x - grid.velocity[i, j, k].x +
-                                            grid.velocity[i, j + 1, k].y - grid.velocity[i, j, k].y +
-                                            grid.velocity[i, j, k + 1].z - grid.velocity[i, j, k].z);
-
-                        float s = (IsSolid(i - 1, j, k) ? 0f : 1f) +
-                                  (IsSolid(i + 1, j, k) ? 0f : 1f) +
-                                  (IsSolid(i, j - 1, k) ? 0f : 1f) +
-                                  (IsSolid(i, j + 1, k) ? 0f : 1f) +
-                                  (IsSolid(i, j, k - 1) ? 0f : 1f) +
-                                  (IsSolid(i, j, k + 1) ? 0f : 1f);
-
-                        if (s > 0)
+                        if (grid.gridTypes[i, j, k] == GridType3D.Fluid)
                         {
-                            grid.pressure[i, j, k] = (divergence - alpha * (GetPressure(i - 1, j, k) + GetPressure(i + 1, j, k) +
-                                                                            GetPressure(i, j - 1, k) + GetPressure(i, j + 1, k) +
-                                                                            GetPressure(i, j, k - 1) + GetPressure(i, j, k + 1))) / s;
+                            float divergence = ComputeDivergence(i, j, k);
 
-                            grid.velocity[i, j, k].x += divergence * (IsSolid(i - 1, j, k) ? 0f : 1f) / s;
-                            grid.velocity[i + 1, j, k].x -= divergence * (IsSolid(i + 1, j, k) ? 0f : 1f) / s;
-                            grid.velocity[i, j, k].y += divergence * (IsSolid(i, j - 1, k) ? 0f : 1f) / s;
-                            grid.velocity[i, j + 1, k].y -= divergence * (IsSolid(i, j + 1, k) ? 0f : 1f) / s;
-                            grid.velocity[i, j, k].z += divergence * (IsSolid(i, j, k - 1) ? 0f : 1f) / s;
-                            grid.velocity[i, j, k + 1].z -= divergence * (IsSolid(i, j, k + 1) ? 0f : 1f) / s;
+                            // Use density to determine the correction
+                            float s = grid.density[i, j, k];
+                            if (s > 0)
+                            {
+                                float pressureCorrection = -divergence / s;
+                                grid.pressure[i, j, k] += alpha * pressureCorrection;
+
+                                // Update the velocities based on the pressure gradient
+                                ApplyPressureGradient(i, j, k, pressureCorrection);
+                            }
                         }
                     }
                 }
@@ -493,13 +530,33 @@ public class CPUPICFLIP3D : MonoBehaviour
         }
     }
 
-    float GetPressure(int i, int j, int k)
+    float ComputeDivergence(int i, int j, int k)
     {
-        if (i < 0 || i >= grid.width || j < 0 || j >= grid.height || k < 0 || k >= grid.depth)
-        {
-            return 0f;
-        }
-        return grid.pressure[i, j, k];
+        float div = 0f;
+
+        div += grid.velocity[i + 1, j, k].x - grid.velocity[i, j, k].x;
+        div += grid.velocity[i, j + 1, k].y - grid.velocity[i, j, k].y;
+        div += grid.velocity[i, j, k + 1].z - grid.velocity[i, j, k].z;
+
+        return div;
+    }
+
+    void ApplyPressureGradient(int i, int j, int k, float pressureCorrection)
+    {
+        if (!IsSolid(i - 1, j, k))
+            grid.velocity[i, j, k].x -= pressureCorrection;
+        if (!IsSolid(i + 1, j, k))
+            grid.velocity[i + 1, j, k].x += pressureCorrection;
+
+        if (!IsSolid(i, j - 1, k))
+            grid.velocity[i, j, k].y -= pressureCorrection;
+        if (!IsSolid(i, j + 1, k))
+            grid.velocity[i, j + 1, k].y += pressureCorrection;
+
+        if (!IsSolid(i, j, k - 1))
+            grid.velocity[i, j, k].z -= pressureCorrection;
+        if (!IsSolid(i, j, k + 1))
+            grid.velocity[i, j, k + 1].z += pressureCorrection;
     }
 
     bool IsSolid(int i, int j, int k)
@@ -569,6 +626,7 @@ public class CPUPICFLIP3D : MonoBehaviour
             particle.velocity = newVelocity;
         }
     }
+
 
     void AdvectParticles(float dt)
     {
@@ -693,6 +751,7 @@ public class Grid3D
     public float[,,] gridWeights;
     public float[,,] gridPressure;
     public Vector3[,,] gridPositionModify;
+    public float[,,] density; // Density field
 
     public int width, height, depth;
     public float cellSize;
@@ -716,6 +775,7 @@ public class Grid3D
         gridWeights = new float[width, height, depth];
         gridPressure = new float[width, height, depth];
         gridPositionModify = new Vector3[width, height, depth];
+        density = new float[width, height, depth]; // Initialize density field
     }
 }
 
