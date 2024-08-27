@@ -15,6 +15,8 @@ public class CPUPICFLIP3D : MonoBehaviour
     public float maxAllowedTimeStep = 0.01f;
     public float correctionStrength = 0.25f;
 
+    public float desiredDensity = 1.0f; // Desired uniform density to enforce
+
     public bool showGrid = true;
     public bool showBounds = true;
     public bool showVelocityField = true;
@@ -49,6 +51,8 @@ public class CPUPICFLIP3D : MonoBehaviour
 
         CalculateDensity(); // Calculate density before solving pressure
 
+        CorrectVelocitiesForDensity(); // Adjust velocities to enforce uniform density
+
         TransferParticleVelocitiesToGrid();
         ApplyGravityToGrid(dt);
         SolvePressure();
@@ -64,7 +68,7 @@ public class CPUPICFLIP3D : MonoBehaviour
     void OnDrawGizmos()
     {
         // Draw particles
-        Gizmos.color = Color.cyan;
+        Gizmos.color = Color.blue;
         if (particles != null)
         {
             foreach (Particle3D particle in particles)
@@ -180,15 +184,7 @@ public class CPUPICFLIP3D : MonoBehaviour
             {
                 for (int k = 0; k < grid.depth; k++)
                 {
-                    GridType3D myType = grid.gridTypes[i, j, k];
-                    GridType3D xpType = (i == 0) ? GridType3D.Solid : grid.gridTypes[i - 1, j, k];
-                    GridType3D xnType = (i == grid.width - 1) ? GridType3D.Solid : grid.gridTypes[i + 1, j, k];
-                    GridType3D ypType = (j == 0) ? GridType3D.Solid : grid.gridTypes[i, j - 1, k];
-                    GridType3D ynType = (j == grid.height - 1) ? GridType3D.Solid : grid.gridTypes[i, j + 1, k];
-                    GridType3D zpType = (k == 0) ? GridType3D.Solid : grid.gridTypes[i, j, k - 1];
-                    GridType3D znType = (k == grid.depth - 1) ? GridType3D.Solid : grid.gridTypes[i, j, k + 1];
-
-                    grid.gridTypes[i, j, k] = myType;
+                    grid.gridTypes[i, j, k] = GridType3D.Air;
                 }
             }
         }
@@ -292,6 +288,51 @@ public class CPUPICFLIP3D : MonoBehaviour
                 for (int k = 0; k < grid.depth; k++)
                 {
                     grid.density[i, j, k] /= cellVolume;
+                }
+            }
+        }
+    }
+
+    void CorrectVelocitiesForDensity()
+    {
+        // Iterate over the grid and adjust velocities to correct density
+        for (int i = 1; i < grid.width - 1; i++)
+        {
+            for (int j = 1; j < grid.height - 1; j++)
+            {
+                for (int k = 1; k < grid.depth - 1; k++)
+                {
+                    // Calculate the density error
+                    float densityError = grid.density[i, j, k] - desiredDensity;
+
+                    // Apply a correction to the velocity field based on the density error
+                    if (Mathf.Abs(densityError) > 0.01f) // Apply correction only if error is significant
+                    {
+                        Vector3 correction = Vector3.zero;
+
+                        // Adjust velocities based on the error to reduce the density
+                        if (densityError > 0)
+                        {
+                            // Density too high, push particles outwards
+                            correction = new Vector3(
+                                (grid.velocity[i + 1, j, k].x - grid.velocity[i - 1, j, k].x),
+                                (grid.velocity[i, j + 1, k].y - grid.velocity[i, j - 1, k].y),
+                                (grid.velocity[i, j, k + 1].z - grid.velocity[i, j, k - 1].z)
+                            );
+                        }
+                        else
+                        {
+                            // Density too low, pull particles inwards
+                            correction = new Vector3(
+                                (grid.velocity[i - 1, j, k].x - grid.velocity[i + 1, j, k].x),
+                                (grid.velocity[i, j - 1, k].y - grid.velocity[i, j + 1, k].y),
+                                (grid.velocity[i, j, k - 1].z - grid.velocity[i, j, k + 1].z)
+                            );
+                        }
+
+                        // Apply correction to the velocity field
+                        grid.velocity[i, j, k] += correction * 0.1f; // The 0.1f is a damping factor to avoid instability
+                    }
                 }
             }
         }
@@ -410,6 +451,7 @@ public class CPUPICFLIP3D : MonoBehaviour
             float w011 = (1 - tx) * ty * tz;
             float w111 = tx * ty * tz;
 
+            // Ensure indices are within bounds before accessing the grid arrays
             if (x0 >= 0 && x0 < grid.width && y0 >= 0 && y0 < grid.height && z0 >= 0 && z0 < grid.depth)
             {
                 grid.velocity[x0, y0, z0] += particle.velocity * w000;
@@ -452,6 +494,7 @@ public class CPUPICFLIP3D : MonoBehaviour
             }
         }
 
+        // Normalize velocities by the accumulated weights
         for (int i = 0; i < grid.width; i++)
         {
             for (int j = 0; j < grid.height; j++)
