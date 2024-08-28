@@ -11,13 +11,9 @@ public class FlipFluidSimulator : MonoBehaviour
     public float overRelaxation = 1.9f;
     public bool compensateDrift = true;
     public bool separateParticles = true;
-    public float obstacleX = 0.0f;
-    public float obstacleY = 0.0f;
     public float obstacleRadius = 0.15f;
     public bool paused = true;
     public bool showObstacle = true;
-    public float obstacleVelX = 0.0f;
-    public float obstacleVelY = 0.0f;
     public bool showParticles = true;
     public bool showGrid = false;
     public FlipFluid fluid;
@@ -29,6 +25,11 @@ public class FlipFluidSimulator : MonoBehaviour
     {
         SetupScene();
         InvokeRepeating("UpdateSimulation", 0f, dt);
+    }
+
+    private void Update()
+    {
+        HandleInput();
     }
 
     private void OnDrawGizmos()
@@ -67,7 +68,7 @@ public class FlipFluidSimulator : MonoBehaviour
             if (showObstacle)
             {
                 Gizmos.color = Color.red;
-                Vector3 obstaclePos = new Vector3(obstacleX, obstacleY, 0);
+                Vector3 obstaclePos = new Vector3(fluid.obstacleX, fluid.obstacleY, 0);
                 Gizmos.DrawWireSphere(obstaclePos, obstacleRadius);
             }
         }
@@ -126,7 +127,8 @@ public class FlipFluidSimulator : MonoBehaviour
             }
         }
 
-        SetObstacle(3.0f, 2.0f, true);
+        fluid.obstacleX = 3.0f;
+        fluid.obstacleY = 2.0f;
     }
 
     private void UpdateSimulation()
@@ -136,51 +138,20 @@ public class FlipFluidSimulator : MonoBehaviour
             fluid.Simulate(
                 dt, gravity, flipRatio, numPressureIters, numParticleIters,
                 overRelaxation, compensateDrift, separateParticles,
-                obstacleX, obstacleY, obstacleRadius);
+                fluid.obstacleX, fluid.obstacleY, obstacleRadius);
             frameNr++;
         }
     }
 
-    private void SetObstacle(float x, float y, bool reset)
+    private void HandleInput()
     {
-        float vx = 0.0f;
-        float vy = 0.0f;
-
-        if (!reset)
+        if (Input.GetMouseButton(0))
         {
-            vx = (x - obstacleX) / dt;
-            vy = (y - obstacleY) / dt;
+            Vector2 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+            print(mousePos);
+            fluid.obstacleX = mousePos.x;
+            fluid.obstacleY = mousePos.y;
         }
-
-        obstacleX = x;
-        obstacleY = y;
-        float r = obstacleRadius;
-        FlipFluid f = fluid;
-        int n = f.fNumY;
-
-        for (int i = 1; i < f.fNumX - 2; i++)
-        {
-            for (int j = 1; j < f.fNumY - 2; j++)
-            {
-                f.s[i * n + j] = 1.0f;
-
-                float dx = (i + 0.5f) * f.h - x;
-                float dy = (j + 0.5f) * f.h - y;
-
-                if (dx * dx + dy * dy < r * r)
-                {
-                    f.s[i * n + j] = 0.0f;
-                    f.u[i * n + j] = vx;
-                    f.u[(i + 1) * n + j] = vx;
-                    f.v[i * n + j] = vy;
-                    f.v[i * n + j + 1] = vy;
-                }
-            }
-        }
-
-        showObstacle = true;
-        obstacleVelX = vx;
-        obstacleVelY = vy;
     }
 }
 
@@ -200,6 +171,9 @@ public class FlipFluid
     public int[] numCellParticles, firstCellParticle, cellParticleIds;
 
     public int numParticles;
+
+    public float obstacleX;
+    public float obstacleY;
 
     public FlipFluid(float density, float width, float height, float spacing, float particleRadius, int maxParticles)
     {
