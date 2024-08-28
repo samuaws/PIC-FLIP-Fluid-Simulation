@@ -11,9 +11,7 @@ public class FlipFluidSimulator : MonoBehaviour
     public float overRelaxation = 1.9f;
     public bool compensateDrift = true;
     public bool separateParticles = true;
-    public float obstacleRadius = 0.15f;
     public bool paused = true;
-    public bool showObstacle = true;
     public bool showParticles = true;
     public bool showGrid = false;
     public FlipFluid fluid;
@@ -63,22 +61,11 @@ public class FlipFluidSimulator : MonoBehaviour
                     }
                 }
             }
-
-            // Draw obstacle
-            if (showObstacle)
-            {
-                Gizmos.color = Color.red;
-                Vector3 obstaclePos = new Vector3(fluid.obstacleX, fluid.obstacleY, 0);
-                Gizmos.DrawWireSphere(obstaclePos, obstacleRadius);
-            }
         }
     }
 
     private void SetupScene()
     {
-        obstacleRadius = 0.15f;
-        overRelaxation = 1.9f;
-
         dt = 1.0f / 60.0f;
         numPressureIters = 50;
         numParticleIters = 2;
@@ -126,9 +113,6 @@ public class FlipFluidSimulator : MonoBehaviour
                 fluid.s[i * n + j] = s_val;
             }
         }
-
-        fluid.obstacleX = 3.0f;
-        fluid.obstacleY = 2.0f;
     }
 
     private void UpdateSimulation()
@@ -137,8 +121,7 @@ public class FlipFluidSimulator : MonoBehaviour
         {
             fluid.Simulate(
                 dt, gravity, flipRatio, numPressureIters, numParticleIters,
-                overRelaxation, compensateDrift, separateParticles,
-                fluid.obstacleX, fluid.obstacleY, obstacleRadius);
+                overRelaxation, compensateDrift, separateParticles);
             frameNr++;
         }
     }
@@ -149,8 +132,6 @@ public class FlipFluidSimulator : MonoBehaviour
         {
             Vector2 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
             print(mousePos);
-            fluid.obstacleX = mousePos.x;
-            fluid.obstacleY = mousePos.y;
         }
     }
 }
@@ -162,18 +143,14 @@ public class FlipFluid
     public float h, fInvSpacing;
     public float[] u, v, du, dv, prevU, prevV, p, s;
     public int[] cellType;
-    public float[] cellColor;
 
     public int maxParticles;
-    public float[] particlePos, particleColor, particleVel, particleDensity;
+    public float[] particlePos, particleVel, particleDensity;
     public float particleRadius, pInvSpacing, particleRestDensity;
     public int pNumX, pNumY, pNumCells;
     public int[] numCellParticles, firstCellParticle, cellParticleIds;
 
     public int numParticles;
-
-    public float obstacleX;
-    public float obstacleY;
 
     public FlipFluid(float density, float width, float height, float spacing, float particleRadius, int maxParticles)
     {
@@ -193,14 +170,9 @@ public class FlipFluid
         p = new float[fNumCells];
         s = new float[fNumCells];
         cellType = new int[fNumCells];
-        cellColor = new float[3 * fNumCells];
 
         this.maxParticles = maxParticles;
         particlePos = new float[2 * maxParticles];
-        particleColor = new float[3 * maxParticles];
-        for (int i = 0; i < maxParticles; i++)
-            particleColor[3 * i + 2] = 1.0f;
-
         particleVel = new float[2 * maxParticles];
         particleDensity = new float[fNumCells];
         particleRestDensity = 0.0f;
@@ -218,7 +190,7 @@ public class FlipFluid
         numParticles = 0;
     }
 
-    public void Simulate(float dt, float gravity, float flipRatio, int numPressureIters, int numParticleIters, float overRelaxation, bool compensateDrift, bool separateParticles, float obstacleX, float obstacleY, float obstacleRadius)
+    public void Simulate(float dt, float gravity, float flipRatio, int numPressureIters, int numParticleIters, float overRelaxation, bool compensateDrift, bool separateParticles)
     {
         int numSubSteps = 1;
         float sdt = dt / numSubSteps;
@@ -228,15 +200,12 @@ public class FlipFluid
             IntegrateParticles(sdt, gravity);
             if (separateParticles)
                 PushParticlesApart(numParticleIters);
-            HandleParticleCollisions(obstacleX, obstacleY, obstacleRadius);
+            HandleParticleCollisions();
             TransferVelocities(true, flipRatio);
             UpdateParticleDensity();
             SolveIncompressibility(numPressureIters, sdt, overRelaxation, compensateDrift);
             TransferVelocities(false, flipRatio);
         }
-
-        UpdateParticleColors();
-        UpdateCellColors();
     }
 
     public void IntegrateParticles(float dt, float gravity)
@@ -251,8 +220,6 @@ public class FlipFluid
 
     public void PushParticlesApart(int numIters)
     {
-        float colorDiffusionCoeff = 0.001f;
-
         numCellParticles = new int[pNumCells];
         firstCellParticle = new int[pNumCells + 1];
         cellParticleIds = new int[maxParticles];
@@ -336,15 +303,6 @@ public class FlipFluid
                             particlePos[2 * i + 1] -= dy;
                             particlePos[2 * id] += dx;
                             particlePos[2 * id + 1] += dy;
-
-                            for (int k = 0; k < 3; k++)
-                            {
-                                float color0 = particleColor[3 * i + k];
-                                float color1 = particleColor[3 * id + k];
-                                float color = (color0 + color1) * 0.5f;
-                                particleColor[3 * i + k] = color0 + (color - color0) * colorDiffusionCoeff;
-                                particleColor[3 * id + k] = color1 + (color - color1) * colorDiffusionCoeff;
-                            }
                         }
                     }
                 }
@@ -352,14 +310,10 @@ public class FlipFluid
         }
     }
 
-    public void HandleParticleCollisions(float obstacleX, float obstacleY, float obstacleRadius)
+    public void HandleParticleCollisions()
     {
         float h = 1.0f / fInvSpacing;
         float r = particleRadius;
-        float or = obstacleRadius;
-        float or2 = or * or;
-        float minDist = obstacleRadius + r;
-        float minDist2 = minDist * minDist;
 
         float minX = h + r;
         float maxX = (fNumX - 1) * h - r;
@@ -370,16 +324,6 @@ public class FlipFluid
         {
             float x = particlePos[2 * i];
             float y = particlePos[2 * i + 1];
-
-            float dx = x - obstacleX;
-            float dy = y - obstacleY;
-            float d2 = dx * dx + dy * dy;
-
-            if (d2 < minDist2)
-            {
-                particleVel[2 * i] = 0.0f;
-                particleVel[2 * i + 1] = 0.0f;
-            }
 
             if (x < minX)
             {
@@ -596,12 +540,6 @@ public class FlipFluid
         int n = fNumY;
         float cp = density * h / dt;
 
-        for (int i = 0; i < fNumCells; i++)
-        {
-            float u_val = this.u[i];
-            float v_val = this.v[i];
-        }
-
         for (int iter = 0; iter < numIters; iter++)
         {
             for (int i = 1; i < fNumX - 1; i++)
@@ -648,100 +586,5 @@ public class FlipFluid
                 }
             }
         }
-    }
-
-    public void UpdateParticleColors()
-    {
-        float h1 = fInvSpacing;
-
-        for (int i = 0; i < numParticles; i++)
-        {
-            float sFactor = 0.01f;
-
-            particleColor[3 * i] = Mathf.Clamp(particleColor[3 * i] - sFactor, 0.0f, 1.0f);
-            particleColor[3 * i + 1] = Mathf.Clamp(particleColor[3 * i + 1] - sFactor, 0.0f, 1.0f);
-            particleColor[3 * i + 2] = Mathf.Clamp(particleColor[3 * i + 2] + sFactor, 0.0f, 1.0f);
-
-            float x = particlePos[2 * i];
-            float y = particlePos[2 * i + 1];
-            int xi = Mathf.Clamp(Mathf.FloorToInt(x * h1), 1, fNumX - 1);
-            int yi = Mathf.Clamp(Mathf.FloorToInt(y * h1), 1, fNumY - 1);
-            int cellNr = xi * fNumY + yi;
-
-            float d0 = particleRestDensity;
-
-            if (d0 > 0.0f)
-            {
-                float relDensity = particleDensity[cellNr] / d0;
-                if (relDensity < 0.7f)
-                {
-                    float s_val = 0.8f;
-                    particleColor[3 * i] = s_val;
-                    particleColor[3 * i + 1] = s_val;
-                    particleColor[3 * i + 2] = 1.0f;
-                }
-            }
-        }
-    }
-
-    public void UpdateCellColors()
-    {
-        cellColor = new float[3 * fNumCells];
-
-        for (int i = 0; i < fNumCells; i++)
-        {
-            if (cellType[i] == 2)
-            {
-                cellColor[3 * i] = 0.5f;
-                cellColor[3 * i + 1] = 0.5f;
-                cellColor[3 * i + 2] = 0.5f;
-            }
-            else if (cellType[i] == 0)
-            {
-                float d = particleDensity[i];
-                if (particleRestDensity > 0.0f)
-                    d /= particleRestDensity;
-                SetSciColor(i, d, 0.0f, 2.0f);
-            }
-        }
-    }
-
-    private void SetSciColor(int cellNr, float val, float minVal, float maxVal)
-    {
-        val = Mathf.Min(Mathf.Max(val, minVal), maxVal - 0.0001f);
-        float d = maxVal - minVal;
-        val = d == 0.0f ? 0.5f : (val - minVal) / d;
-        float m = 0.25f;
-        int num = Mathf.FloorToInt(val / m);
-        float s_val = (val - num * m) / m;
-        float r = 0, g = 0, b = 0;
-
-        switch (num)
-        {
-            case 0:
-                r = 0.0f;
-                g = s_val;
-                b = 1.0f;
-                break;
-            case 1:
-                r = 0.0f;
-                g = 1.0f;
-                b = 1.0f - s_val;
-                break;
-            case 2:
-                r = s_val;
-                g = 1.0f;
-                b = 0.0f;
-                break;
-            case 3:
-                r = 1.0f;
-                g = 1.0f - s_val;
-                b = 0.0f;
-                break;
-        }
-
-        cellColor[3 * cellNr] = r;
-        cellColor[3 * cellNr + 1] = g;
-        cellColor[3 * cellNr + 2] = b;
     }
 }
