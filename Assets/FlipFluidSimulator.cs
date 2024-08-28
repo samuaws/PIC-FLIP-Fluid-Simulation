@@ -22,6 +22,9 @@ public class FlipFluidSimulator : MonoBehaviour
     public bool showGrid = false;
     public FlipFluid fluid;
 
+    [Header("Particle Settings")]
+    public int numParticles = 1000; // Control the number of particles from the Inspector
+
     private void Start()
     {
         SetupScene();
@@ -97,13 +100,13 @@ public class FlipFluidSimulator : MonoBehaviour
         int numY = Mathf.FloorToInt((relWaterHeight * tankHeight - 2.0f * h - 2.0f * r) / dy);
         int maxParticles = numX * numY;
 
-        fluid = new FlipFluid(density, tankWidth, tankHeight, h, r, maxParticles);
+        fluid = new FlipFluid(density, tankWidth, tankHeight, h, r, numParticles > maxParticles ? maxParticles : numParticles);
 
-        fluid.numParticles = numX * numY;
+        fluid.numParticles = Mathf.Min(numParticles, maxParticles); // Set based on the inspector value
         int p = 0;
-        for (int i = 0; i < numX; i++)
+        for (int i = 0; i < numX && p < fluid.numParticles; i++)
         {
-            for (int j = 0; j < numY; j++)
+            for (int j = 0; j < numY && p < fluid.numParticles; j++)
             {
                 fluid.particlePos[p++] = h + r + dx * i + (j % 2 == 0 ? 0.0f : r);
                 fluid.particlePos[p++] = h + r + dy * j;
