@@ -2,7 +2,7 @@ using UnityEngine;
 using TMPro;
 using System.Collections.Generic;
 
-public class PICFLIPFluid : MonoBehaviour
+public class Ice : MonoBehaviour
 {
     [SerializeField] int resolutionX = 512;
     [SerializeField] int resolutionY = 512;

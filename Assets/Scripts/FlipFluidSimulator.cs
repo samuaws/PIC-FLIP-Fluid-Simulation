@@ -38,7 +38,7 @@ public class FlipFluidSimulator : MonoBehaviour
             // Draw particles
             if (showParticles)
             {
-                Gizmos.color = Color.blue;
+                Gizmos.color = Color.cyan;
                 for (int i = 0; i < fluid.numParticles; i++)
                 {
                     Vector3 pos = new Vector3(fluid.particlePos[2 * i], fluid.particlePos[2 * i + 1], 0);

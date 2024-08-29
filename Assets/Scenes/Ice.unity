@@ -133,7 +133,7 @@ GameObject:
   m_Component:
   - component: {fileID: 762184353}
   - component: {fileID: 762184352}
-  - component: {fileID: 762184354}
+  - component: {fileID: 762184355}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -207,7 +207,7 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &762184354
+--- !u!114 &762184355
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -216,20 +216,17 @@ MonoBehaviour:
   m_GameObject: {fileID: 762184350}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7bdd275c5a166a14d854b8ae9251c922, type: 3}
+  m_Script: {fileID: 11500000, guid: 23b95ab39463d654c9aa1403ce3e75cc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  resolutionX: 48
-  resolutionY: 27
-  deltaTime: 0.1
-  cellSize: 1
-  randomizeVelocity: 0
+  resolutionX: 512
+  resolutionY: 512
+  deltaTime: 0.01
+  numParticles: 10000
   maxInitialVelocity: 1
-  viscosity: 0.1
   shader: {fileID: 4800000, guid: 920111e3f3e7c7a489b5a54223a99097, type: 3}
   initialTexture: {fileID: 2800000, guid: 38a01b5630173a14ca55015d03c6dbc1, type: 3}
-  force: 1000
-  forceExponent: 200
+  force: 300
   velocityText: {fileID: 0}
 --- !u!1 &1593473523
 GameObject:
