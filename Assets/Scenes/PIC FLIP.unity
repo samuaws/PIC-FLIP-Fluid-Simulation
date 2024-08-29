@@ -731,23 +731,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   gravity: -9.81
   dt: 0.008333334
-  flipRatio: 0.9
+  picFlipRatio: 0.9
   numPressureIters: 100
   numParticleIters: 2
   frameNr: 0
   overRelaxation: 1.9
   compensateDrift: 1
   separateParticles: 1
-  obstacleX: 0
-  obstacleY: 0
-  obstacleRadius: 0.15
   paused: 0
-  showObstacle: 1
-  obstacleVelX: 0
-  obstacleVelY: 0
   showParticles: 1
   showGrid: 0
-  numParticles: 2500
+  numParticles: 5000
 --- !u!1 &1663797946
 GameObject:
   m_ObjectHideFlags: 0

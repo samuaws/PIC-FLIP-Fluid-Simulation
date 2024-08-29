@@ -150,17 +150,6 @@ public class StableFluids : MonoBehaviour
         }
     }
 
-    void ApplyInitialTexture()
-    {
-        for (int y = 0; y < resolutionY; y++)
-        {
-            for (int x = 0; x < resolutionX; x++)
-            {
-                Color pixel = initialTexture.GetPixelBilinear((float)x / resolutionX, (float)y / resolutionY);
-                velocityField[x, y] = new Vector2(pixel.r, pixel.g);
-            }
-        }
-    }
 
     void AdvectionStep()
     {

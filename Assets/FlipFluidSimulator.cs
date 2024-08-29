@@ -4,7 +4,8 @@ public class FlipFluidSimulator : MonoBehaviour
 {
     public float gravity = -9.81f;
     public float dt = 1.0f / 120.0f;
-    public float flipRatio = 0.9f;
+    [Range(0,1)]
+    public float picFlipRatio = 0.9f;
     public int numPressureIters = 100;
     public int numParticleIters = 2;
     public int frameNr = 0;
@@ -120,7 +121,7 @@ public class FlipFluidSimulator : MonoBehaviour
         if (!paused)
         {
             fluid.Simulate(
-                dt, gravity, flipRatio, numPressureIters, numParticleIters,
+                dt, gravity, picFlipRatio, numPressureIters, numParticleIters,
                 overRelaxation, compensateDrift, separateParticles);
             frameNr++;
         }
@@ -190,7 +191,7 @@ public class FlipFluid
         numParticles = 0;
     }
 
-    public void Simulate(float dt, float gravity, float flipRatio, int numPressureIters, int numParticleIters, float overRelaxation, bool compensateDrift, bool separateParticles)
+    public void Simulate(float dt, float gravity, float picFlipRatio, int numPressureIters, int numParticleIters, float overRelaxation, bool compensateDrift, bool separateParticles)
     {
         int numSubSteps = 1;
         float sdt = dt / numSubSteps;
@@ -201,10 +202,10 @@ public class FlipFluid
             if (separateParticles)
                 PushParticlesApart(numParticleIters);
             HandleParticleCollisions();
-            TransferVelocities(true, flipRatio);
+            TransferVelocities(true, picFlipRatio);
             UpdateParticleDensity();
             SolveIncompressibility(numPressureIters, sdt, overRelaxation, compensateDrift);
-            TransferVelocities(false, flipRatio);
+            TransferVelocities(false, picFlipRatio);
         }
     }
 
@@ -403,7 +404,7 @@ public class FlipFluid
         }
     }
 
-    public void TransferVelocities(bool toGrid, float flipRatio)
+    public void TransferVelocities(bool toGrid, float picFlipRatio)
     {
         int n = fNumY;
         float h = this.h;
@@ -503,7 +504,7 @@ public class FlipFluid
                             + valid2 * d2 * (f[nr2] - prevF[nr2]) + valid3 * d3 * (f[nr3] - prevF[nr3])) / dSum;
                         float flipV = vel + corr;
 
-                        particleVel[2 * i + component] = (1.0f - flipRatio) * picV + flipRatio * flipV;
+                        particleVel[2 * i + component] = (1.0f - picFlipRatio) * picV + picFlipRatio * flipV;
                     }
                 }
             }
